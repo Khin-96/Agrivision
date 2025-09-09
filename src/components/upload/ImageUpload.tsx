@@ -6,42 +6,46 @@ import Image from 'next/image';
 
 interface ImageUploadProps {
   onImageUpload: (file: File) => void;
+  allowVideo?: boolean; // ✅ added support for video uploads
 }
 
-export default function ImageUpload({ onImageUpload }: ImageUploadProps) {
+export default function ImageUpload({ onImageUpload, allowVideo = false }: ImageUploadProps) {
   const [preview, setPreview] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
-    accept: {
-      'image/*': ['.jpeg', '.jpg', '.png', '.webp']
-    },
-    maxSize: 10485760, // 10MB
+    accept: allowVideo
+      ? { 'image/*': ['.jpeg', '.jpg', '.png', '.webp'], 'video/*': ['.mp4', '.mov', '.webm'] }
+      : { 'image/*': ['.jpeg', '.jpg', '.png', '.webp'] },
+    maxSize: 52428800, // 50MB for videos
     onDrop: (acceptedFiles) => {
       if (acceptedFiles.length > 0) {
-        handleImageUpload(acceptedFiles[0]);
+        handleFileUpload(acceptedFiles[0]);
       }
     },
     onDropRejected: (fileRejections) => {
       const rejection = fileRejections[0];
       if (rejection.errors[0].code === 'file-too-large') {
-        setError('File is too large. Maximum size is 10MB.');
+        setError(`File is too large. Maximum size is ${allowVideo ? '50MB' : '10MB'}.`);
       } else {
-        setError('Please upload a valid image file (JPEG, PNG, WebP).');
+        setError(allowVideo
+          ? 'Please upload a valid image or video file.'
+          : 'Please upload a valid image file (JPEG, PNG, WebP).'
+        );
       }
     }
   });
 
-  const handleImageUpload = (file: File) => {
+  const handleFileUpload = (file: File) => {
     setIsLoading(true);
     setError(null);
-    
-    // Create a preview URL
+
+    // Create preview URL
     const objectUrl = URL.createObjectURL(file);
     setPreview(objectUrl);
-    
-    // Pass the file to the parent component
+
+    // Pass the file up
     onImageUpload(file);
     setIsLoading(false);
   };
@@ -61,7 +65,6 @@ export default function ImageUpload({ onImageUpload }: ImageUploadProps) {
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"
-            xmlns="http://www.w3.org/2000/svg"
           >
             <path
               strokeLinecap="round"
@@ -72,18 +75,16 @@ export default function ImageUpload({ onImageUpload }: ImageUploadProps) {
           </svg>
           <p className="text-sm text-gray-600">
             {isDragActive
-              ? 'Drop the image here...'
-              : 'Drag & drop an image here, or click to select'}
+              ? 'Drop the file here...'
+              : `Drag & drop ${allowVideo ? 'an image or video' : 'an image'} here, or click to select`}
           </p>
-          <p className="text-xs text-gray-500">PNG, JPG, WEBP up to 10MB</p>
+          <p className="text-xs text-gray-500">
+            {allowVideo ? 'PNG, JPG, WEBP, MP4, MOV, WEBM up to 50MB' : 'PNG, JPG, WEBP up to 10MB'}
+          </p>
         </div>
       </div>
 
-      {error && (
-        <div className="mt-2 text-sm text-red-600">
-          {error}
-        </div>
-      )}
+      {error && <div className="mt-2 text-sm text-red-600">{error}</div>}
 
       {isLoading && (
         <div className="mt-4 flex justify-center">
@@ -93,15 +94,23 @@ export default function ImageUpload({ onImageUpload }: ImageUploadProps) {
 
       {preview && !isLoading && (
         <div className="mt-4">
-          <div className="relative h-64 w-full overflow-hidden rounded-lg">
-            <Image
+          {allowVideo && preview.match(/\.(mp4|mov|webm)$/i) ? (
+            <video
               src={preview}
-              alt="Preview"
-              fill
-              style={{ objectFit: 'contain' }}
-              className="rounded-lg"
+              controls
+              className="w-full h-64 rounded-lg object-contain"
             />
-          </div>
+          ) : (
+            <div className="relative h-64 w-full overflow-hidden rounded-lg">
+              <Image
+                src={preview}
+                alt="Preview"
+                fill
+                style={{ objectFit: 'contain' }}
+                className="rounded-lg"
+              />
+            </div>
+          )}
         </div>
       )}
     </div>
