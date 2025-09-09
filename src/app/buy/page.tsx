@@ -6,8 +6,7 @@ import Layout from '@/components/layout/Layout';
 import { motion } from 'framer-motion';
 import Image from 'next/image';
 import { Search, ShoppingCart } from 'lucide-react';
-import { useAuth } from '@/contexts/AuthContext';
-import { signIn } from 'next-auth/react';
+import Cart from '@/components/cart/Cart';
 
 interface Product {
   id: number;
@@ -23,6 +22,14 @@ interface Product {
   reviews: number;
 }
 
+interface CartItem {
+  id: number;
+  name: string;
+  price: string;
+  image: string;
+  quantity: number;
+}
+
 const categories = [
   'all',
   'vegetables',
@@ -35,13 +42,14 @@ const categories = [
 ];
 
 export default function BuyPage() {
-  const { user } = useAuth();
   const [products, setProducts] = useState<Product[]>([]);
   const [filteredProducts, setFilteredProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [sortBy, setSortBy] = useState<'name' | 'price' | 'rating'>('name');
+  const [cartItems, setCartItems] = useState<CartItem[]>([]);
+  const [isCartOpen, setIsCartOpen] = useState(false);
 
   useEffect(() => {
     const fetchProducts = async () => {
@@ -122,17 +130,64 @@ export default function BuyPage() {
   }, [products, searchTerm, selectedCategory, sortBy]);
 
   const addToCart = (product: Product) => {
-    if (!user) {
-      signIn('google', { callbackUrl: '/buy' });
+    const existingItem = cartItems.find(item => item.id === product.id);
+    
+    if (existingItem) {
+      setCartItems(cartItems.map(item =>
+        item.id === product.id
+          ? { ...item, quantity: item.quantity + 1 }
+          : item
+      ));
+    } else {
+      setCartItems([...cartItems, {
+        id: product.id,
+        name: product.name,
+        price: product.price,
+        image: product.image,
+        quantity: 1
+      }]);
+    }
+    
+    // Open the cart after adding an item
+    setIsCartOpen(true);
+  };
+
+  const updateQuantity = (id: number, quantity: number) => {
+    if (quantity <= 0) {
+      removeItem(id);
       return;
     }
-    // Add cart logic here
-    alert(`Added ${product.name} to cart`);
+    
+    setCartItems(cartItems.map(item =>
+      item.id === id
+        ? { ...item, quantity }
+        : item
+    ));
   };
+
+  const removeItem = (id: number) => {
+    setCartItems(cartItems.filter(item => item.id !== id));
+  };
+
+  // Calculate total items in cart
+  const totalCartItems = cartItems.reduce((total, item) => total + item.quantity, 0);
 
   return (
     <Layout>
       <div className="min-h-screen bg-gradient-to-b from-gray-900 to-gray-800 py-12 px-4 sm:px-6 lg:px-8">
+        {/* Floating Cart Button */}
+        <button
+          onClick={() => setIsCartOpen(true)}
+          className="fixed bottom-6 right-6 z-40 bg-green-600 hover:bg-green-700 text-white p-4 rounded-full shadow-lg flex items-center justify-center"
+        >
+          <ShoppingCart className="w-6 h-6" />
+          {totalCartItems > 0 && (
+            <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs rounded-full h-6 w-6 flex items-center justify-center">
+              {totalCartItems}
+            </span>
+          )}
+        </button>
+
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-12">
             <h1 className="text-4xl font-extrabold text-white">Browse Products</h1>
@@ -248,6 +303,15 @@ export default function BuyPage() {
           )}
         </div>
       </div>
+
+      {/* Cart Component */}
+      <Cart
+        isOpen={isCartOpen}
+        onClose={() => setIsCartOpen(false)}
+        items={cartItems}
+        onUpdateQuantity={updateQuantity}
+        onRemoveItem={removeItem}
+      />
     </Layout>
   );
 }
