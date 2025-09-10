@@ -5,8 +5,21 @@ import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import { toast } from 'react-hot-toast';
-import { AlertCircle, Upload, X } from 'lucide-react';
+import { AlertCircle, Upload, X, Edit, Trash2 } from 'lucide-react';
 import { motion } from 'framer-motion';
+import Image from 'next/image';
+
+interface Product {
+  id: string;
+  name: string;
+  description: string;
+  price: number;
+  category: string;
+  quantity: number;
+  unit: string;
+  status: string;
+  images: string[];
+}
 
 export default function SellPage() {
   const { user, loading: authLoading } = useAuth();
@@ -20,12 +33,15 @@ export default function SellPage() {
     category: '',
     quantity: 0,
     unit: '',
-    status: 'Availability' as 'Availability' | 'Out of Stock' | 'Restocked' | 'Limited' | 'Coming Soon' | 'Discontinued',
+    status: 'Available',
   });
   const [images, setImages] = useState<File[]>([]);
   const [imagePreviews, setImagePreviews] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [userProducts, setUserProducts] = useState<Product[]>([]);
+  const [fetchingProducts, setFetchingProducts] = useState(true);
+  const [editingProductId, setEditingProductId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -33,6 +49,26 @@ export default function SellPage() {
       router.push('/auth');
     }
   }, [authLoading, user, router]);
+
+  // Fetch current user's products
+  useEffect(() => {
+    if (!user) return;
+    const fetchUserProducts = async () => {
+      setFetchingProducts(true);
+      try {
+        const res = await fetch(`/api/products?sellerId=${user.id}`);
+        if (!res.ok) throw new Error('Failed to fetch products');
+        const data = await res.json();
+        setUserProducts(data);
+      } catch (err) {
+        console.error(err);
+        toast.error('Failed to load your products');
+      } finally {
+        setFetchingProducts(false);
+      }
+    };
+    fetchUserProducts();
+  }, [user]);
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -66,6 +102,14 @@ export default function SellPage() {
     setImagePreviews(prev => prev.filter((_, i) => i !== index));
   };
 
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({
+      ...prev,
+      [name]: name === 'price' || name === 'quantity' ? Number(value) : value
+    }));
+  };
+
   if (authLoading) {
     return (
       <Layout>
@@ -77,6 +121,13 @@ export default function SellPage() {
   }
 
   if (!user) return null;
+
+  const resetForm = () => {
+    setFormData({ name: '', description: '', price: 0, category: '', quantity: 0, unit: '', status: 'Available' });
+    setImages([]);
+    setImagePreviews([]);
+    setEditingProductId(null);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -97,6 +148,7 @@ export default function SellPage() {
 
     try {
       const imageUrls: string[] = [];
+
       for (const image of images) {
         const form = new FormData();
         form.append('file', image);
@@ -113,26 +165,54 @@ export default function SellPage() {
         imageUrls.push(data.secure_url);
       }
 
-      const response = await fetch('/api/products', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...formData,
-          images: imageUrls,
-          sellerId: user.id,
-          sellerName: user.name,
-          farmerId: user.id,
-          farmerName: user.name,
-          available: formData.status === 'Available',
-          rating: 0,
-          reviews: 0
-        }),
+      let response;
+      if (editingProductId) {
+        // Update existing product
+        response = await fetch(`/api/products/${editingProductId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ...formData,
+            images: imageUrls,
+            sellerId: user.id,
+            sellerName: user.name,
+            farmerId: user.id,
+            farmerName: user.name,
+            available: formData.status === 'Available'
+          }),
+        });
+      } else {
+        // Create new product
+        response = await fetch('/api/products', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ...formData,
+            images: imageUrls,
+            sellerId: user.id,
+            sellerName: user.name,
+            farmerId: user.id,
+            farmerName: user.name,
+            available: formData.status === 'Available',
+            rating: 0,
+            reviews: 0
+          }),
+        });
+      }
+
+      if (!response.ok) throw new Error('Failed to save product');
+      const savedProduct = await response.json();
+
+      // Update product list dynamically
+      setUserProducts(prev => {
+        if (editingProductId) {
+          return prev.map(p => p.id === editingProductId ? savedProduct : p);
+        }
+        return [...prev, savedProduct];
       });
 
-      if (!response.ok) throw new Error('Failed to create product');
-
-      toast.success('Product listed successfully!');
-      router.push('/buy');
+      toast.success(editingProductId ? 'Product updated!' : 'Product listed!');
+      resetForm();
     } catch (error) {
       console.error(error);
       toast.error('Failed to list product');
@@ -142,19 +222,74 @@ export default function SellPage() {
     }
   };
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: name === 'price' || name === 'quantity' ? Number(value) : value
-    }));
+  const handleEdit = (product: Product) => {
+    setFormData({
+      name: product.name,
+      description: product.description,
+      price: product.price,
+      category: product.category,
+      quantity: product.quantity,
+      unit: product.unit,
+      status: product.status,
+    });
+    setImagePreviews(product.images);
+    setImages([]); // Will upload new images if changed
+    setEditingProductId(product.id);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this product?')) return;
+    try {
+      const res = await fetch(`/api/products/${id}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error('Delete failed');
+      setUserProducts(prev => prev.filter(p => p.id !== id));
+      toast.success('Product deleted!');
+    } catch (err) {
+      console.error(err);
+      toast.error('Failed to delete product');
+    }
   };
 
   return (
     <Layout>
       <div className="min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-3xl mx-auto">
-          <h1 className="text-3xl font-bold text-gray-900 mb-6">List a New Product To the Market</h1>
+        <div className="max-w-5xl mx-auto">
+          <h1 className="text-3xl font-bold text-gray-900 mb-6">Your Products</h1>
+
+          {fetchingProducts ? (
+            <div className="flex justify-center py-12">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-500"></div>
+            </div>
+          ) : userProducts.length === 0 ? (
+            <p className="text-gray-600 mb-8">You haven't listed any products yet.</p>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-12">
+              {userProducts.map(product => (
+                <div key={product.id} className="bg-white border border-gray-200 flex flex-col relative">
+                  <div className="relative h-48 w-full">
+                    <Image src={product.images[0] || '/placeholder-product.jpg'} alt={product.name} fill className="object-cover"/>
+                  </div>
+                  <div className="p-4 flex flex-col flex-grow">
+                    <h3 className="font-bold text-lg text-gray-900">{product.name}</h3>
+                    <p className="text-sm text-gray-600 mt-1">{product.category}</p>
+                    <p className="text-gray-900 font-semibold mt-2">${product.price}/{product.unit}</p>
+                    <p className="text-gray-600 text-sm mt-1 line-clamp-2">{product.description}</p>
+                  </div>
+                  <div className="absolute top-2 right-2 flex gap-2">
+                    <button onClick={() => handleEdit(product)} className="bg-blue-500 text-white p-1 rounded hover:bg-blue-600">
+                      <Edit className="w-4 h-4"/>
+                    </button>
+                    <button onClick={() => handleDelete(product.id)} className="bg-red-500 text-white p-1 rounded hover:bg-red-600">
+                      <Trash2 className="w-4 h-4"/>
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <h2 className="text-2xl font-bold text-gray-900 mb-4">{editingProductId ? 'Edit Product' : 'List a New Product'}</h2>
 
           {!user.idVerified && (
             <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6 flex items-start">
@@ -242,10 +377,10 @@ export default function SellPage() {
 
             {/* Buttons */}
             <div className="flex justify-between pt-6">
-              <button type="button" onClick={() => router.back()} className="px-6 py-3 text-gray-600 hover:text-gray-900">Cancel</button>
+              <button type="button" onClick={resetForm} className="px-6 py-3 text-gray-600 hover:text-gray-900">Cancel</button>
               <button type="submit" disabled={loading || uploading || !user.idVerified} 
                 className="px-8 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg flex items-center gap-2">
-                {uploading ? 'Uploading...' : loading ? 'Listing...' : 'List Product'}
+                {uploading ? 'Uploading...' : loading ? 'Saving...' : editingProductId ? 'Update Product' : 'List Product'}
               </button>
             </div>
           </form>
