@@ -1,13 +1,59 @@
 // app/api/products/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
+import { getServerSession } from 'next-auth/next';
+import { authOptions } from '@/lib/auth';
+import { prisma } from '@/lib/prisma';
 
-const prisma = new PrismaClient();
-
-export async function POST(req: NextRequest) {
+export async function GET() {
   try {
-    const data = await req.json();
+    const products = await prisma.product.findMany({
+      where: { available: true },
+      include: {
+        farmer: {
+          select: {
+            name: true,
+            id: true
+          }
+        }
+      },
+      orderBy: { createdAt: 'desc' }
+    });
 
+    const formattedProducts = products.map(product => ({
+      id: product.id,
+      name: product.name,
+      description: product.description,
+      price: product.price,
+      category: product.category,
+      quantity: product.quantity,
+      unit: product.unit,
+      images: product.images,
+      farmerId: product.farmerId,
+      farmerName: product.farmer.name,
+      available: product.available,
+      rating: product.rating,
+      reviews: product.reviews
+    }));
+
+    return NextResponse.json(formattedProducts);
+  } catch (error) {
+    console.error('Failed to fetch products:', error);
+    return NextResponse.json(
+      { error: 'Failed to fetch products' },
+      { status: 500 }
+    );
+  }
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const session = await getServerSession(authOptions);
+    
+    if (!session?.user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const body = await request.json();
     const {
       name,
       description,
@@ -18,54 +64,38 @@ export async function POST(req: NextRequest) {
       images,
       farmerId,
       farmerName,
-      available
-    } = data;
+      available,
+      rating,
+      reviews
+    } = body;
 
-    // Validation
-    if (!name || !description || !price || !category || !quantity || !unit || !farmerId || !farmerName) {
-      return NextResponse.json(
-        { error: 'Missing required fields' },
-        { status: 400 }
-      );
+    // Verify the user is the farmer they claim to be
+    if (session.user.id !== farmerId) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Ensure types
-    const parsedPrice = parseFloat(price);
-    const parsedQuantity = parseFloat(quantity);
-    const parsedAvailable = available !== undefined ? Boolean(available) : true;
-
-    // Create product
     const product = await prisma.product.create({
       data: {
         name,
         description,
-        price: parsedPrice,
+        price,
         category,
-        quantity: parsedQuantity,
+        quantity,
         unit,
-        images: Array.isArray(images) ? images : [images],
+        images,
         farmerId,
-        farmerName,
-        available: parsedAvailable,
-      },
+        available,
+        rating,
+        reviews
+      }
     });
 
-    return NextResponse.json({ message: 'Product created successfully', product }, { status: 201 });
+    return NextResponse.json(product);
   } catch (error) {
-    console.error('Product creation error:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
-  }
-}
-
-export async function GET() {
-  try {
-    const products = await prisma.product.findMany({
-      orderBy: { createdAt: 'desc' },
-    });
-
-    return NextResponse.json(products, { status: 200 });
-  } catch (error) {
-    console.error('Failed to fetch products:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    console.error('Failed to create product:', error);
+    return NextResponse.json(
+      { error: 'Failed to create product' },
+      { status: 500 }
+    );
   }
 }

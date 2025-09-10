@@ -1,16 +1,17 @@
-// app/sell/page.tsx
 'use client';
 
 import Layout from '@/components/layout/Layout';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import { toast } from 'react-hot-toast';
-import { Shield, AlertCircle } from 'lucide-react';
+import { AlertCircle, Upload, X } from 'lucide-react';
+import { motion } from 'framer-motion';
 
 export default function SellPage() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -19,11 +20,13 @@ export default function SellPage() {
     category: '',
     quantity: 0,
     unit: '',
-    imageUrl: ''
+    status: 'Availability' as 'Availability' | 'Out of Stock' | 'Restocked' | 'Limited' | 'Coming Soon' | 'Discontinued',
   });
+  const [images, setImages] = useState<File[]>([]);
+  const [imagePreviews, setImagePreviews] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
+  const [uploading, setUploading] = useState(false);
 
-  // Redirect unauthenticated users
   useEffect(() => {
     if (!authLoading && !user) {
       toast.error('Please log in to list products');
@@ -31,11 +34,43 @@ export default function SellPage() {
     }
   }, [authLoading, user, router]);
 
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+
+    const newImages: File[] = [];
+    const newPreviews: string[] = [];
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      if (file.type.startsWith('image/')) {
+        newImages.push(file);
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          if (e.target?.result) {
+            newPreviews.push(e.target.result as string);
+            if (newPreviews.length === files.length) {
+              setImagePreviews(prev => [...prev, ...newPreviews]);
+            }
+          }
+        };
+        reader.readAsDataURL(file);
+      }
+    }
+
+    setImages(prev => [...prev, ...newImages]);
+  };
+
+  const removeImage = (index: number) => {
+    setImages(prev => prev.filter((_, i) => i !== index));
+    setImagePreviews(prev => prev.filter((_, i) => i !== index));
+  };
+
   if (authLoading) {
     return (
       <Layout>
-        <div className="min-h-screen bg-gradient-to-b from-gray-900 to-gray-800 flex items-center justify-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-400"></div>
+        <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-500"></div>
         </div>
       </Layout>
     );
@@ -52,28 +87,58 @@ export default function SellPage() {
       return;
     }
 
+    if (images.length === 0) {
+      toast.error('Please upload at least one image');
+      return;
+    }
+
     setLoading(true);
+    setUploading(true);
 
     try {
+      const imageUrls: string[] = [];
+      for (const image of images) {
+        const form = new FormData();
+        form.append('file', image);
+        form.append('upload_preset', 'farmers_market');
+
+        const uploadResponse = await fetch(`https://api.cloudinary.com/v1_1/YOUR_CLOUD_NAME/image/upload`, {
+          method: 'POST',
+          body: form,
+        });
+
+        if (!uploadResponse.ok) throw new Error('Image upload failed');
+
+        const data = await uploadResponse.json();
+        imageUrls.push(data.secure_url);
+      }
+
       const response = await fetch('/api/products', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...formData,
+          images: imageUrls,
           sellerId: user.id,
-          sellerName: user.name
+          sellerName: user.name,
+          farmerId: user.id,
+          farmerName: user.name,
+          available: formData.status === 'Available',
+          rating: 0,
+          reviews: 0
         }),
       });
 
       if (!response.ok) throw new Error('Failed to create product');
 
       toast.success('Product listed successfully!');
-      router.push('/market');
+      router.push('/buy');
     } catch (error) {
-      console.error('Product creation error:', error);
+      console.error(error);
       toast.error('Failed to list product');
     } finally {
       setLoading(false);
+      setUploading(false);
     }
   };
 
@@ -87,158 +152,104 @@ export default function SellPage() {
 
   return (
     <Layout>
-      <div className="max-w-3xl mx-auto py-12 px-6">
-        <h1 className="text-3xl font-bold text-white mb-2">List a New Product</h1>
+      <div className="min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-3xl mx-auto">
+          <h1 className="text-3xl font-bold text-gray-900 mb-6">List a New Product To the Market</h1>
 
-        {!user.idVerified && (
-          <div className="bg-yellow-500/10 border border-yellow-500/50 rounded-lg p-4 mb-6 flex items-start">
-            <AlertCircle className="w-5 h-5 text-yellow-400 mr-3 mt-0.5" />
-            <div>
-              <p className="text-yellow-400 font-medium">Verification Required</p>
-              <p className="text-yellow-300 text-sm mt-1">
-                You need to verify your ID before listing products. 
-                <button 
-                  onClick={() => router.push('/profile')}
-                  className="ml-2 underline hover:text-yellow-200"
-                >
-                  Verify now
-                </button>
-              </p>
+          {!user.idVerified && (
+            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6 flex items-start">
+              <AlertCircle className="w-5 h-5 text-yellow-500 mr-3 mt-0.5" />
+              <div>
+                <p className="text-yellow-700 font-medium">Verification Required</p>
+                <p className="text-yellow-600 text-sm mt-1">
+                  You need to verify your ID before listing products.
+                  <button onClick={() => router.push('/profile')} className="ml-2 underline hover:text-yellow-800">Verify now</button>
+                </p>
+              </div>
             </div>
-          </div>
-        )}
+          )}
 
-        <form
-          onSubmit={handleSubmit}
-          className="bg-gray-800/50 backdrop-blur-lg border border-gray-700/50 p-8 rounded-2xl shadow-xl space-y-6"
-        >
-          <div>
-            <label className="text-white block mb-2 font-medium">Product Name</label>
-            <input
-              type="text"
-              name="name"
-              className="w-full p-3.5 rounded-lg bg-gray-700/50 border border-gray-600 text-white focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-colors"
-              value={formData.name}
-              onChange={handleInputChange}
-              required
-              placeholder="Enter product name"
-            />
-          </div>
-
-          <div>
-            <label className="text-white block mb-2 font-medium">Description</label>
-            <textarea
-              name="description"
-              className="w-full p-3.5 rounded-lg bg-gray-700/50 border border-gray-600 text-white focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-colors"
-              value={formData.description}
-              onChange={handleInputChange}
-              required
-              rows={4}
-              placeholder="Describe your product in detail"
-            />
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <form onSubmit={handleSubmit} className="bg-white border border-gray-200 p-8 rounded-2xl shadow-lg space-y-6">
+            {/* Product Name */}
             <div>
-              <label className="text-white block mb-2 font-medium">Price ($)</label>
-              <input
-                type="number"
-                name="price"
-                step="0.01"
-                min="0"
-                className="w-full p-3.5 rounded-lg bg-gray-700/50 border border-gray-600 text-white focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-colors"
-                value={formData.price}
-                onChange={handleInputChange}
-                required
-              />
+              <label className="text-gray-700 block mb-2 font-medium">Product Name</label>
+              <input type="text" name="name" value={formData.name} onChange={handleInputChange} placeholder="Enter product name"
+                className="w-full p-3 rounded-lg border border-gray-300 bg-gray-100 text-gray-900 focus:outline-none focus:ring-2 focus:ring-green-500"/>
             </div>
 
+            {/* Description */}
             <div>
-              <label className="text-white block mb-2 font-medium">Quantity</label>
-              <input
-                type="number"
-                name="quantity"
-                min="1"
-                className="w-full p-3.5 rounded-lg bg-gray-700/50 border border-gray-600 text-white focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-colors"
-                value={formData.quantity}
-                onChange={handleInputChange}
-                required
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <label className="text-white block mb-2 font-medium">Unit</label>
-              <input
-                type="text"
-                name="unit"
-                className="w-full p-3.5 rounded-lg bg-gray-700/50 border border-gray-600 text-white focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-colors"
-                value={formData.unit}
-                onChange={handleInputChange}
-                required
-                placeholder="e.g., kg, lb, piece"
-              />
+              <label className="text-gray-700 block mb-2 font-medium">Description</label>
+              <textarea name="description" value={formData.description} onChange={handleInputChange} rows={4} placeholder="Describe your product"
+                className="w-full p-3 rounded-lg border border-gray-300 bg-gray-100 text-gray-900 focus:outline-none focus:ring-2 focus:ring-green-500"/>
             </div>
 
-            <div>
-              <label className="text-white block mb-2 font-medium">Category</label>
-              <select
-                name="category"
-                value={formData.category}
-                onChange={handleInputChange}
-                className="w-full p-3.5 rounded-lg bg-gray-700/50 border border-gray-600 text-white focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-colors"
-                required
-              >
-                <option value="">Select category</option>
+            {/* Price, Quantity, Unit, Category, Status */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <input type="number" name="price" value={formData.price} onChange={handleInputChange} placeholder="Price" min={0}
+                className="w-full p-3 rounded-lg border border-gray-300 bg-gray-100 text-gray-900 focus:outline-none focus:ring-2 focus:ring-green-500"/>
+              <input type="number" name="quantity" value={formData.quantity} onChange={handleInputChange} placeholder="Quantity" min={0}
+                className="w-full p-3 rounded-lg border border-gray-300 bg-gray-100 text-gray-900 focus:outline-none focus:ring-2 focus:ring-green-500"/>
+              <input type="text" name="unit" value={formData.unit} onChange={handleInputChange} placeholder="Unit (kg, piece)"
+                className="w-full p-3 rounded-lg border border-gray-300 bg-gray-100 text-gray-900 focus:outline-none focus:ring-2 focus:ring-green-500"/>
+              <select name="category" value={formData.category} onChange={handleInputChange}
+                className="w-full p-3 rounded-lg border border-gray-300 bg-gray-100 text-gray-900 focus:outline-none focus:ring-2 focus:ring-green-500">
+                <option value="">Select Category</option>
                 <option value="vegetables">Vegetables</option>
                 <option value="fruits">Fruits</option>
-                <option value="grains">Grains</option>
                 <option value="dairy">Dairy</option>
-                <option value="meat">Meat</option>
-                <option value="poultry">Poultry</option>
-                <option value="seafood">Seafood</option>
+                <option value="grains">Grains</option>
                 <option value="herbs">Herbs</option>
-                <option value="other">Other</option>
+                <option value="meat">Meat</option>
+                <option value="condiments">Condiments</option>
+              </select>
+              <select name="status" value={formData.status} onChange={handleInputChange}
+                className="w-full p-3 rounded-lg border border-gray-300 bg-gray-100 text-gray-900 focus:outline-none focus:ring-2 focus:ring-green-500">
+                <option value="Available">Available</option>
+                <option value="Out of Stock">Out of Stock</option>
+                <option value="Restocked">Restocked</option>
+                <option value="Limited">Limited</option>
+                <option value="Coming Soon">Coming Soon</option>
+                <option value="Discontinued">Discontinued</option>
               </select>
             </div>
-          </div>
 
-          <div>
-            <label className="text-white block mb-2 font-medium">Image URL</label>
-            <input
-              type="url"
-              name="imageUrl"
-              className="w-full p-3.5 rounded-lg bg-gray-700/50 border border-gray-600 text-white focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-colors"
-              value={formData.imageUrl}
-              onChange={handleInputChange}
-              required
-              placeholder="https://example.com/image.jpg"
-            />
-          </div>
+            {/* Images */}
+            <div>
+              <label className="text-gray-700 block mb-2 font-medium">Product Images</label>
+              <input type="file" ref={fileInputRef} onChange={handleImageUpload} accept="image/*" multiple className="hidden"/>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mb-4">
+                {imagePreviews.map((img, idx) => (
+                  <div key={idx} className="relative group rounded-lg border border-gray-300 overflow-hidden">
+                    <img src={img} className="w-full h-32 object-cover group-hover:scale-105 transition-transform"/>
+                    <button type="button" onClick={() => removeImage(idx)}
+                      className="absolute -top-2 -right-2 bg-red-500 text-white p-1 rounded-full hover:bg-red-600">
+                      <X className="w-4 h-4"/>
+                    </button>
+                  </div>
+                ))}
+                {imagePreviews.length < 5 && (
+                  <motion.button type="button" onClick={() => fileInputRef.current?.click()} 
+                    className="w-full h-32 border-2 border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center text-gray-400 hover:text-gray-600 hover:border-gray-400 transition-colors"
+                    whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
+                    <Upload className="w-8 h-8 mb-2"/>
+                    Add Image
+                  </motion.button>
+                )}
+              </div>
+              <p className="text-gray-500 text-sm">Upload up to 5 images. First image will be main display.</p>
+            </div>
 
-          <button
-            type="submit"
-            disabled={loading || !user.idVerified}
-            className="w-full py-3.5 px-6 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded-lg font-medium transition-colors flex items-center justify-center"
-          >
-            {user.idVerified ? (
-              loading ? (
-                <>
-                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
-                  Listing...
-                </>
-              ) : (
-                'List Product'
-              )
-            ) : (
-              <>
-                <Shield className="w-5 h-5 mr-2" />
-                Verification Required
-              </>
-            )}
-          </button>
-        </form>
+            {/* Buttons */}
+            <div className="flex justify-between pt-6">
+              <button type="button" onClick={() => router.back()} className="px-6 py-3 text-gray-600 hover:text-gray-900">Cancel</button>
+              <button type="submit" disabled={loading || uploading || !user.idVerified} 
+                className="px-8 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg flex items-center gap-2">
+                {uploading ? 'Uploading...' : loading ? 'Listing...' : 'List Product'}
+              </button>
+            </div>
+          </form>
+        </div>
       </div>
     </Layout>
   );
