@@ -9,6 +9,7 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.884.0",
     "@google/generative-ai": "^0.24.1",
     "@headlessui/react": "^2.2.4",
     "@heroicons/react": "^2.2.0",
@@ -23,6 +24,7 @@
     "base64-js": "^1.5.1",
     "bcryptjs": "^3.0.2",
     "chart.js": "^4.4.9",
+    "cloudinary": "^2.7.0",
     "dotenv": "^17.2.2",
     "framer-motion": "^12.23.12",
     "jspdf": "^3.0.2",
@@ -30,6 +32,7 @@
     "markdown-it": "^14.1.0",
     "next": "^15.5.2",
     "next-auth": "^4.24.11",
+    "next-cloudinary": "^6.16.0",
     "react": "^19.0.0",
     "react-chartjs-2": "^5.3.0",
     "react-dom": "^19.0.0",

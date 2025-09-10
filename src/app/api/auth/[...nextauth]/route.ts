@@ -1,3 +1,4 @@
+// app/api/auth/[...nextauth]/route.ts
 import NextAuth from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
 import CredentialsProvider from "next-auth/providers/credentials";
@@ -40,6 +41,10 @@ export const authOptions = {
           name: user.name,
           role: user.role,
           idVerified: user.idVerified,
+          image: user.image,
+          idFrontUrl: user.idFrontUrl,
+          idBackUrl: user.idBackUrl,
+          idType: user.idType,
         };
       },
     }),
@@ -49,18 +54,20 @@ export const authOptions = {
     async signIn({ user, account }) {
       if (account?.provider === "google") {
         try {
-          // Safe parsing of callbackUrl
+          // Get role from callback URL or default to buyer
           let selectedRole: "buyer" | "farmer" = "buyer";
           if (account.callbackUrl) {
             try {
-              const url = new URL(account.callbackUrl, process.env.NEXTAUTH_URL);
-              selectedRole = (url.searchParams.get("role") as "buyer" | "farmer") || "buyer";
-            } catch (err) {
+              const url = new URL(account.callbackUrl);
+              const roleParam = url.searchParams.get("role");
+              if (roleParam === "farmer" || roleParam === "buyer") {
+                selectedRole = roleParam;
+              }
+            } catch {
               console.warn("Invalid callback URL, defaulting to buyer");
             }
           }
 
-          // Check if user exists
           const existingUser = await prisma.user.findUnique({
             where: { email: user.email! },
           });
@@ -87,8 +94,7 @@ export const authOptions = {
         }
       }
 
-      // Allow credentials login
-      return true;
+      return true; // Allow credentials login
     },
 
     async jwt({ token, user }) {
@@ -96,6 +102,10 @@ export const authOptions = {
         token.id = user.id;
         token.role = user.role;
         token.idVerified = user.idVerified;
+        token.image = user.image;
+        token.idFrontUrl = user.idFrontUrl;
+        token.idBackUrl = user.idBackUrl;
+        token.idType = user.idType;
       }
       return token;
     },
@@ -105,27 +115,34 @@ export const authOptions = {
         session.user.id = token.id as string;
         session.user.role = token.role as "farmer" | "buyer";
         session.user.idVerified = token.idVerified as boolean;
+        session.user.image = token.image as string | null;
+        session.user.idFrontUrl = token.idFrontUrl as string | null;
+        session.user.idBackUrl = token.idBackUrl as string | null;
+        session.user.idType = token.idType as string | null;
       }
       return session;
     },
 
     async redirect({ url, baseUrl }) {
+      // Handle redirects properly
       if (url.startsWith("/")) return `${baseUrl}${url}`;
       else if (new URL(url).origin === baseUrl) return url;
-      return baseUrl;
+      
+      // Default redirect to market page
+      return `${baseUrl}/market`;
     },
   },
 
   pages: {
     signIn: "/auth",
-    error: "/auth?error=true",
+    error: "/auth/error",
   },
 
   session: {
     strategy: "jwt" as const,
+    maxAge: 30 * 24 * 60 * 60, // 30 days
   },
 };
 
 const handler = NextAuth(authOptions);
-
 export { handler as GET, handler as POST };

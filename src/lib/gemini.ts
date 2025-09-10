@@ -1,6 +1,4 @@
 import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } from '@google/generative-ai';
-import { readFile } from 'fs/promises';
-import { basename } from 'path';
 
 // Types for Gemini API responses
 export interface GeminiAnalysisResult {
@@ -59,35 +57,19 @@ function initializeGemini(): GoogleGenerativeAI {
 }
 
 // Convert file to base64 for Gemini API
-async function fileToBase64(filePath: string): Promise<string> {
+async function fileToBase64(file: File): Promise<string> {
   try {
-    const buffer = await readFile(filePath);
-    return buffer.toString('base64');
+    const buffer = await file.arrayBuffer();
+    const base64 = Buffer.from(buffer).toString('base64');
+    return base64;
   } catch (error) {
     throw new Error(`Failed to read file: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }
 
-// Get MIME type from file extension
-function getMimeType(filePath: string): string {
-  const extension = filePath.split('.').pop()?.toLowerCase();
-  
-  const mimeTypes: { [key: string]: string } = {
-    // Images
-    'jpg': 'image/jpeg',
-    'jpeg': 'image/jpeg',
-    'png': 'image/png',
-    'webp': 'image/webp',
-    'gif': 'image/gif',
-    
-    // Videos
-    'mp4': 'video/mp4',
-    'webm': 'video/webm',
-    'mov': 'video/quicktime',
-    'avi': 'video/x-msvideo',
-  };
-  
-  return mimeTypes[extension || ''] || 'application/octet-stream';
+// Get MIME type from file
+function getMimeType(file: File): string {
+  return file.type;
 }
 
 // Enhanced prompt for clean formatting without markdown
@@ -152,7 +134,7 @@ function cleanAnalysisText(text: string): string {
 
 // Analyze image content with Gemini
 export async function analyzeImage(
-  filePath: string, 
+  file: File, 
   config: GeminiConfig = DEFAULT_CONFIG
 ): Promise<GeminiAnalysisResult> {
   try {
@@ -163,9 +145,9 @@ export async function analyzeImage(
       safetySettings: SAFETY_SETTINGS
     });
 
-    const base64Data = await fileToBase64(filePath);
-    const mimeType = getMimeType(filePath);
-    const filename = basename(filePath);
+    const base64Data = await fileToBase64(file);
+    const mimeType = getMimeType(file);
+    const filename = file.name;
     
     const imageParts = [
       {
@@ -207,35 +189,20 @@ export async function analyzeImage(
   }
 }
 
-// Analyze video content with Gemini
-export async function analyzeVideo(
-  filePath: string,
+// Analyze text content with Gemini (for ID verification)
+export async function analyzeText(
+  text: string,
   config: GeminiConfig = DEFAULT_CONFIG
 ): Promise<GeminiAnalysisResult> {
   try {
     const genAI = initializeGemini();
     const model = genAI.getGenerativeModel({ 
-      model: "gemini-1.5-flash",
+      model: "gemini-pro",
       generationConfig: config,
       safetySettings: SAFETY_SETTINGS
     });
 
-    const base64Data = await fileToBase64(filePath);
-    const mimeType = getMimeType(filePath);
-    const filename = basename(filePath);
-    
-    const videoParts = [
-      {
-        inlineData: {
-          data: base64Data,
-          mimeType: mimeType,
-        },
-      },
-    ];
-
-    const prompt = generatePrompt('video', filename);
-    
-    const result = await model.generateContent([prompt, ...videoParts]);
+    const result = await model.generateContent(text);
     const response = await result.response;
     const analysis = response.text();
 
@@ -248,7 +215,7 @@ export async function analyzeVideo(
     };
 
   } catch (error) {
-    console.error('Gemini video analysis error:', error);
+    console.error('Gemini text analysis error:', error);
     
     if (error instanceof Error) {
       if (error.message.includes('API key')) {
@@ -260,21 +227,21 @@ export async function analyzeVideo(
       throw error;
     }
     
-    throw new Error('Failed to analyze video with Gemini AI');
+    throw new Error('Failed to analyze text with Gemini AI');
   }
 }
 
 // Main analysis function that determines content type and calls appropriate analyzer
 export async function analyzeContent(
-  filePath: string,
-  type: 'image' | 'video',
+  content: File | string,
+  type: 'image' | 'text',
   config?: GeminiConfig
 ): Promise<GeminiAnalysisResult> {
   try {
-    if (type === 'image') {
-      return await analyzeImage(filePath, config);
-    } else if (type === 'video') {
-      return await analyzeVideo(filePath, config);
+    if (type === 'image' && content instanceof File) {
+      return await analyzeImage(content, config);
+    } else if (type === 'text' && typeof content === 'string') {
+      return await analyzeText(content, config);
     } else {
       throw new Error(`Unsupported content type: ${type}`);
     }

@@ -1,6 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -46,12 +43,22 @@ model User {
   password      String?
   role          String    @default("buyer")
   idVerified    Boolean   @default(false)
+  idFrontUrl    String?
+  idBackUrl     String?
+  idType        String?
+  phone         String?   // ✅ added
+  address       String?   // ✅ added
+  farmName      String?   // ✅ added
+  farmLocation  String?   // ✅ added
+  farmSize      String?   // ✅ added
+  farmType      String?   // ✅ added
   authProvider  String?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt 
 
   accounts      Account[]
   sessions      Session[]
+  products      Product[]   // ✅ relation to Product
 }
 
 model VerificationToken {
@@ -70,10 +77,12 @@ model Product {
   category    String
   quantity    Float
   unit        String
-  images      String[]
-  farmerId    String
-  farmerName  String
+  images      Json     // ✅ use JSON for multiple images
   available   Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  // ✅ relation to User (farmer)
+  farmerId String
+  farmer   User @relation(fields: [farmerId], references: [id], onDelete: Cascade)
 }

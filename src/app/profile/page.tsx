@@ -6,16 +6,20 @@ import { motion } from 'framer-motion';
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
-import { Camera, Upload, CheckCircle, XCircle, User, FileText, ShoppingCart, LogOut, Shield } from 'lucide-react';
-import { analyzeContent } from '@/lib/gemini';
+import { Camera, Upload, CheckCircle, XCircle, User, FileText, ShoppingCart, LogOut, Shield, IdCard } from 'lucide-react';
+import { toast, Toaster } from 'react-hot-toast';
 
 export default function ProfilePage() {
   const { user, updateProfile, loading: authLoading, logout } = useAuth();
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [idVerificationStatus, setIdVerificationStatus] = useState<'none' | 'processing' | 'verified' | 'failed'>('none');
-  const [idImage, setIdImage] = useState<string | null>(null);
-  const [idFile, setIdFile] = useState<File | null>(null);
+  const [idFrontImage, setIdFrontImage] = useState<string | null>(null);
+  const [idBackImage, setIdBackImage] = useState<string | null>(null);
+  const [idFrontFile, setIdFrontFile] = useState<File | null>(null);
+  const [idBackFile, setIdBackFile] = useState<File | null>(null);
+  const [idType, setIdType] = useState<string>('');
+  const [verificationError, setVerificationError] = useState<string>('');
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -40,6 +44,11 @@ export default function ProfilePage() {
         farmSize: user.farmSize || '',
         farmType: user.farmType || ''
       });
+      
+      // Set existing ID images if available
+      if (user.idFrontUrl) setIdFrontImage(user.idFrontUrl);
+      if (user.idBackUrl) setIdBackImage(user.idBackUrl);
+      if (user.idType) setIdType(user.idType);
     }
   }, [user]);
 
@@ -71,12 +80,13 @@ export default function ProfilePage() {
     try {
       const success = await updateProfile(formData);
       if (success) {
-        alert('Profile updated successfully!');
+        toast.success('Profile updated successfully!');
       } else {
-        alert('Failed to update profile');
+        toast.error('Failed to update profile');
       }
     } catch (error) {
-      alert('Failed to update profile');
+      console.error('Profile update error:', error);
+      toast.error('Failed to update profile');
     } finally {
       setLoading(false);
     }
@@ -87,46 +97,102 @@ export default function ProfilePage() {
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
-  const handleIdUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleIdUpload = async (side: 'front' | 'back', e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    setIdFile(file);
-    
-    // Convert file to base64 for preview
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      setIdImage(e.target?.result as string);
-    };
-    reader.readAsDataURL(file);
+    // Check file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      setVerificationError('File size must be less than 5MB');
+      toast.error('File size must be less than 5MB');
+      return;
+    }
 
-    // Verify ID using Gemini AI
+    // Check file type
+    if (!file.type.startsWith('image/')) {
+      setVerificationError('Please upload an image file');
+      toast.error('Please upload an image file');
+      return;
+    }
+
+    if (side === 'front') {
+      setIdFrontFile(file);
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        setIdFrontImage(e.target?.result as string);
+      };
+      reader.readAsDataURL(file);
+    } else {
+      setIdBackFile(file);
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        setIdBackImage(e.target?.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+
+    setVerificationError('');
+  };
+
+  const verifyId = async () => {
+    if (!idFrontFile || !idBackFile || !idType) {
+      setVerificationError('Please upload both sides of your ID and select the ID type');
+      toast.error('Please upload both sides of your ID and select the ID type');
+      return;
+    }
+
     setIdVerificationStatus('processing');
-    
+    setVerificationError('');
+    toast.loading('Verifying your ID...', { id: 'verify-id' });
+
     try {
-      // In a real implementation, you would send the file to your server
-      // and then call the Gemini API from there
       const formData = new FormData();
-      formData.append('idImage', file);
-      
+      formData.append('frontImage', idFrontFile);
+      formData.append('backImage', idBackFile);
+      formData.append('idType', idType);
+
+      console.log('Submitting ID verification', { idFrontFile, idBackFile, idType });
+
       const response = await fetch('/api/verify-id', {
         method: 'POST',
         body: formData,
+        credentials: 'include', // IMPORTANT: include cookies so NextAuth session is sent
       });
       
-      if (!response.ok) throw new Error('Verification failed');
+      if (!response.ok) {
+        // try to parse error body safely
+        const errorData = await response.json().catch(() => ({}));
+        console.error('Verify ID returned non-OK:', errorData);
+        throw new Error(errorData.error || 'Verification failed');
+      }
       
       const result = await response.json();
+      console.log('ID verification result:', result);
       
       if (result.verified) {
         setIdVerificationStatus('verified');
-        await updateProfile({ idVerified: true });
+        toast.dismiss('verify-id');
+        toast.success('ID verified successfully!');
+        // Update profile with ID URLs and verification status
+        await updateProfile({ 
+          idVerified: true,
+          idFrontUrl: result.frontUrl,
+          idBackUrl: result.backUrl,
+          idType: idType
+        });
       } else {
         setIdVerificationStatus('failed');
+        setVerificationError(result.message || 'Verification failed. Please try again.');
+        toast.dismiss('verify-id');
+        toast.error(result.message || 'Verification failed. Please try again.');
       }
     } catch (error) {
       console.error('ID verification error:', error);
       setIdVerificationStatus('failed');
+      const errMessage = error instanceof Error ? error.message : 'An error occurred during verification. Please try again.';
+      setVerificationError(errMessage);
+      toast.dismiss('verify-id');
+      toast.error(errMessage);
     }
   };
 
@@ -137,6 +203,9 @@ export default function ProfilePage() {
 
   return (
     <Layout>
+      {/* Toaster for toast messages */}
+      <Toaster position="top-right" />
+
       <div className="min-h-screen bg-gradient-to-b from-gray-900 to-gray-800 py-12 px-4 sm:px-6 lg:px-8">
         <div className="max-w-6xl mx-auto">
           <div className="text-center mb-10">
@@ -219,51 +288,146 @@ export default function ProfilePage() {
               </div>
 
               {/* ID Verification Section */}
-              {user.role === 'farmer' && !user.idVerified && (
-                <motion.div 
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="bg-gray-800/50 backdrop-blur-lg rounded-2xl border border-gray-700/50 p-6 shadow-xl"
-                >
-                  <h3 className="text-lg font-semibold text-white mb-4 flex items-center">
-                    <Shield className="w-5 h-5 mr-2 text-yellow-400" />
-                    Verify Your Identity
-                  </h3>
-                  <p className="text-sm text-gray-300 mb-5">
-                    Upload a government-issued ID to verify your identity as a farmer. This is required to list products for sale.
-                  </p>
-                  
-                  <div className="border-2 border-dashed border-gray-600 rounded-xl p-5 text-center transition-colors hover:border-green-500/50">
-                    {idImage ? (
-                      <div className="mb-4">
-                        <img
-                          src={idImage}
-                          alt="ID preview"
-                          className="mx-auto max-h-40 object-contain rounded-lg"
+              <motion.div 
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="bg-gray-800/50 backdrop-blur-lg rounded-2xl border border-gray-700/50 p-6 shadow-xl"
+              >
+                <h3 className="text-lg font-semibold text-white mb-4 flex items-center">
+                  <IdCard className="w-5 h-5 mr-2 text-yellow-400" />
+                  {user.idVerified ? 'ID Verification Status' : 'Verify Your Identity'}
+                </h3>
+                
+                {user.idVerified ? (
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-center text-green-400 bg-green-400/10 py-2 px-4 rounded-lg">
+                      <CheckCircle className="w-5 h-5 mr-2" />
+                      Your ID has been verified
+                    </div>
+                    <p className="text-sm text-gray-300">
+                      ID Type: <span className="capitalize">{user.idType?.replace('_', ' ')}</span>
+                    </p>
+                    <div className="grid grid-cols-2 gap-2">
+                      {user.idFrontUrl && (
+                        <div className="text-center">
+                          <p className="text-xs text-gray-400 mb-1">Front</p>
+                          <img
+                            src={user.idFrontUrl}
+                            alt="ID Front"
+                            className="w-full h-24 object-contain rounded-lg border border-gray-600"
+                          />
+                        </div>
+                      )}
+                      {user.idBackUrl && (
+                        <div className="text-center">
+                          <p className="text-xs text-gray-400 mb-1">Back</p>
+                          <img
+                            src={user.idBackUrl}
+                            alt="ID Back"
+                            className="w-full h-24 object-contain rounded-lg border border-gray-600"
+                          />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <p className="text-sm text-gray-300 mb-5">
+                      Upload both sides of your government-issued ID to verify your identity.
+                    </p>
+                    
+                    {/* ID Type Selection */}
+                    <div className="mb-4">
+                      <label htmlFor="idType" className="block text-sm font-medium text-gray-300 mb-2">
+                        ID Type
+                      </label>
+                      <select
+                        id="idType"
+                        value={idType}
+                        onChange={(e) => setIdType(e.target.value)}
+                        className="w-full px-3 py-2 bg-gray-700/50 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-colors"
+                      >
+                        <option value="">Select ID Type</option>
+                        <option value="driver_license">Driver's License</option>
+                        <option value="national_id">National ID</option>
+                        <option value="passport">Passport</option>
+                        <option value="school_id">School ID</option>
+                      </select>
+                    </div>
+                    
+                    {/* Front ID Upload */}
+                    <div className="mb-4">
+                      <p className="text-sm text-gray-300 mb-2">Front of ID</p>
+                      <div className="border-2 border-dashed border-gray-600 rounded-xl p-4 text-center transition-colors hover:border-green-500/50">
+                        {idFrontImage ? (
+                          <div className="mb-3">
+                            <img
+                              src={idFrontImage}
+                              alt="ID Front preview"
+                              className="mx-auto max-h-32 object-contain rounded-lg"
+                            />
+                          </div>
+                        ) : (
+                          <div className="py-4">
+                            <Upload className="mx-auto w-8 h-8 text-gray-400 mb-2" />
+                            <p className="text-xs text-gray-400">Front of ID</p>
+                          </div>
+                        )}
+                        
+                        <input
+                          type="file"
+                          id="id-front-upload"
+                          accept="image/*"
+                          onChange={(e) => handleIdUpload('front', e)}
+                          className="hidden"
                         />
+                        <label
+                          htmlFor="id-front-upload"
+                          className="cursor-pointer bg-gray-600 hover:bg-gray-700 text-white px-3 py-1.5 rounded-lg text-xs font-medium transition-colors inline-flex items-center"
+                        >
+                          <Upload className="w-3 h-3 mr-1" />
+                          {idFrontImage ? 'Change' : 'Upload Front'}
+                        </label>
                       </div>
-                    ) : (
-                      <div className="py-6">
-                        <Upload className="mx-auto w-10 h-10 text-gray-400 mb-4" />
-                        <p className="text-sm text-gray-400">Upload a clear photo of your government ID</p>
+                    </div>
+                    
+                    {/* Back ID Upload */}
+                    <div className="mb-4">
+                      <p className="text-sm text-gray-300 mb-2">Back of ID</p>
+                      <div className="border-2 border-dashed border-gray-600 rounded-xl p-4 text-center transition-colors hover:border-green-500/50">
+                        {idBackImage ? (
+                          <div className="mb-3">
+                            <img
+                              src={idBackImage}
+                              alt="ID Back preview"
+                              className="mx-auto max-h-32 object-contain rounded-lg"
+                            />
+                          </div>
+                        ) : (
+                          <div className="py-4">
+                            <Upload className="mx-auto w-8 h-8 text-gray-400 mb-2" />
+                            <p className="text-xs text-gray-400">Back of ID</p>
+                          </div>
+                        )}
+                        
+                        <input
+                          type="file"
+                          id="id-back-upload"
+                          accept="image/*"
+                          onChange={(e) => handleIdUpload('back', e)}
+                          className="hidden"
+                        />
+                        <label
+                          htmlFor="id-back-upload"
+                          className="cursor-pointer bg-gray-600 hover:bg-gray-700 text-white px-3 py-1.5 rounded-lg text-xs font-medium transition-colors inline-flex items-center"
+                        >
+                          <Upload className="w-3 h-3 mr-1" />
+                          {idBackImage ? 'Change' : 'Upload Back'}
+                        </label>
                       </div>
-                    )}
+                    </div>
                     
-                    <input
-                      type="file"
-                      id="id-upload"
-                      accept="image/*"
-                      onChange={handleIdUpload}
-                      className="hidden"
-                    />
-                    <label
-                      htmlFor="id-upload"
-                      className="cursor-pointer bg-green-600 hover:bg-green-700 text-white px-5 py-2.5 rounded-lg text-sm font-medium transition-colors inline-flex items-center"
-                    >
-                      <Upload className="w-4 h-4 mr-2" />
-                      {idImage ? 'Change Image' : 'Upload ID'}
-                    </label>
-                    
+                    {/* Verification Status */}
                     {idVerificationStatus === 'processing' && (
                       <div className="mt-4 flex items-center justify-center text-yellow-400 text-sm">
                         <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-yellow-400 mr-2"></div>
@@ -281,12 +445,34 @@ export default function ProfilePage() {
                     {idVerificationStatus === 'failed' && (
                       <div className="mt-4 flex items-center justify-center text-red-400 text-sm">
                         <XCircle className="w-5 h-5 mr-2" />
-                        Verification failed. Please try again with a clearer image.
+                        Verification failed
                       </div>
                     )}
-                  </div>
-                </motion.div>
-              )}
+                    
+                    {verificationError && (
+                      <div className="mt-2 text-red-400 text-xs text-center">
+                        {verificationError}
+                      </div>
+                    )}
+                    
+                    {/* Verify Button */}
+                    <button
+                      onClick={verifyId}
+                      disabled={idVerificationStatus === 'processing' || !idFrontFile || !idBackFile || !idType}
+                      className="w-full mt-4 bg-green-600 hover:bg-green-700 text-white py-2.5 rounded-lg disabled:opacity-50 transition-colors flex items-center justify-center"
+                    >
+                      {idVerificationStatus === 'processing' ? (
+                        <>
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                          Verifying...
+                        </>
+                      ) : (
+                        'Verify ID'
+                      )}
+                    </button>
+                  </>
+                )}
+              </motion.div>
             </div>
 
             {/* Main Form */}
@@ -415,15 +601,14 @@ export default function ProfilePage() {
                               name="farmType"
                               value={formData.farmType}
                               onChange={handleInputChange}
-                              className="w-full px-4 py-3 bg-gray-700/50 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-colors"
+                              className="w-full px-4 py-3 bg-gray-700/50 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-colors"
                             >
                               <option value="">Select farm type</option>
-                              <option value="organic">Organic</option>
-                              <option value="conventional">Conventional</option>
-                              <option value="hydroponic">Hydroponic</option>
-                              <option value="aquaponic">Aquaponic</option>
-                              <option value="livestock">Livestock</option>
+                              <option value="crop">Crop Farming</option>
+                              <option value="livestock">Livestock Farming</option>
                               <option value="mixed">Mixed Farming</option>
+                              <option value="aquaculture">Aquaculture</option>
+                              <option value="horticulture">Horticulture</option>
                             </select>
                           </div>
                         </div>
@@ -431,22 +616,11 @@ export default function ProfilePage() {
                     </>
                   )}
 
-                  <div className="flex justify-end space-x-4 pt-6">
-                    <motion.button
-                      type="button"
-                      whileHover={{ scale: 1.02 }}
-                      whileTap={{ scale: 0.98 }}
-                      className="px-5 py-2.5 text-gray-300 hover:text-white bg-gray-700/50 rounded-lg transition-colors"
-                      onClick={() => router.back()}
-                    >
-                      Cancel
-                    </motion.button>
-                    <motion.button
+                  <div className="flex justify-end pt-6 border-t border-gray-600">
+                    <button
                       type="submit"
                       disabled={loading}
-                      whileHover={{ scale: 1.02 }}
-                      whileTap={{ scale: 0.98 }}
-                      className="px-6 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-lg disabled:opacity-50 transition-colors flex items-center"
+                      className="bg-green-600 hover:bg-green-700 text-white px-8 py-3 rounded-lg font-medium transition-colors disabled:opacity-50 flex items-center"
                     >
                       {loading ? (
                         <>
@@ -456,7 +630,7 @@ export default function ProfilePage() {
                       ) : (
                         'Save Changes'
                       )}
-                    </motion.button>
+                    </button>
                   </div>
                 </form>
               </div>

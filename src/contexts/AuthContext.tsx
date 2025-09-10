@@ -2,7 +2,7 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { signIn as nextAuthSignIn, signOut as nextAuthSignOut, getSession } from 'next-auth/react';
+import { signIn, signOut, getSession } from 'next-auth/react';
 
 interface User {
   id: string;
@@ -10,94 +10,120 @@ interface User {
   name: string | null;
   role: 'farmer' | 'buyer';
   idVerified: boolean;
-  image?: string | null;
+  image: string | null;
+  idFrontUrl: string | null;
+  idBackUrl: string | null;
+  idType: string | null;
+  phone?: string;
+  address?: string;
+  farmName?: string;
+  farmLocation?: string;
+  farmSize?: string;
+  farmType?: string;
 }
 
 interface AuthContextType {
   user: User | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<boolean>;
-  register: (userData: Omit<User, 'id'>, password: string) => Promise<boolean>;
+  register: (userData: Partial<User>, password: string) => Promise<boolean>;
   logout: () => Promise<void>;
-  updateProfile: (data: Partial<User> & { [key: string]: any }) => Promise<boolean>;
+  updateProfile: (data: Partial<User>) => Promise<boolean>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+export const useAuth = () => {
+  const context = useContext(AuthContext);
+  if (context === undefined) {
+    throw new Error('useAuth must be used within an AuthProvider');
+  }
+  return context;
+};
 
 interface AuthProviderProps {
   children: ReactNode;
 }
 
-export function AuthProvider({ children }: AuthProviderProps) {
+export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const fetchUser = async () => {
-    try {
-      const response = await fetch('/api/auth/user');
-      if (response.ok) {
-        const userData: User = await response.json();
-        setUser(userData);
-      } else {
-        setUser(null);
-      }
-    } catch (error) {
-      console.error('Failed to fetch user:', error);
-      setUser(null);
-    }
-  };
-
-  // Load user on mount
   useEffect(() => {
-    const loadUser = async () => {
-      setLoading(true);
+    const initializeAuth = async () => {
       try {
         const session = await getSession();
         if (session?.user) {
-          await fetchUser();
-        } else {
-          setUser(null);
+          // Fetch complete user data from our API
+          const response = await fetch('/api/auth/user');
+          if (response.ok) {
+            const userData = await response.json();
+            setUser(userData);
+          } else {
+            console.error('Failed to fetch user data');
+          }
         }
       } catch (error) {
-        console.error('Failed to load user:', error);
-        setUser(null);
+        console.error('Auth initialization error:', error);
       } finally {
         setLoading(false);
       }
     };
-    loadUser();
+
+    initializeAuth();
   }, []);
 
   const login = async (email: string, password: string): Promise<boolean> => {
     try {
-      const result = await nextAuthSignIn('credentials', {
+      const result = await signIn('credentials', {
         email,
         password,
         redirect: false,
       });
 
-      if (result?.error) return false;
+      if (result?.error) {
+        console.error('Login error:', result.error);
+        return false;
+      }
 
-      await fetchUser();
-      return true;
+      // Fetch updated user data after login
+      const response = await fetch('/api/auth/user');
+      if (response.ok) {
+        const userData = await response.json();
+        setUser(userData);
+        return true;
+      }
+      
+      return false;
     } catch (error) {
       console.error('Login error:', error);
       return false;
     }
   };
 
-  const register = async (userData: Omit<User, 'id'>, password: string): Promise<boolean> => {
+  const register = async (userData: Partial<User>, password: string): Promise<boolean> => {
     try {
       const response = await fetch('/api/auth/register', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...userData, password }),
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: userData.name,
+          email: userData.email,
+          password,
+          role: userData.role,
+        }),
       });
 
-      if (!response.ok) return false;
-
-      // Auto-login after registration
-      return login(userData.email, password);
+      if (response.ok) {
+        // Auto-login after registration
+        return await login(userData.email!, password);
+      } else {
+        const errorData = await response.json();
+        console.error('Registration error:', errorData.error);
+        return false;
+      }
     } catch (error) {
       console.error('Registration error:', error);
       return false;
@@ -105,15 +131,17 @@ export function AuthProvider({ children }: AuthProviderProps) {
   };
 
   const logout = async (): Promise<void> => {
-    await nextAuthSignOut({ redirect: false });
+    await signOut({ redirect: false });
     setUser(null);
   };
 
-  const updateProfile = async (data: Partial<User> & { [key: string]: any }): Promise<boolean> => {
+  const updateProfile = async (data: Partial<User>): Promise<boolean> => {
     try {
-      const response = await fetch('/api/auth/profile', {
+      const response = await fetch('/api/auth/user', {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+        },
         body: JSON.stringify(data),
       });
 
@@ -121,23 +149,24 @@ export function AuthProvider({ children }: AuthProviderProps) {
         const updatedUser = await response.json();
         setUser(updatedUser);
         return true;
+      } else {
+        console.error('Profile update failed');
+        return false;
       }
-      return false;
     } catch (error) {
-      console.error('Update profile error:', error);
+      console.error('Profile update error:', error);
       return false;
     }
   };
 
-  return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout, updateProfile }}>
-      {children}
-    </AuthContext.Provider>
-  );
-}
+  const value: AuthContextType = {
+    user,
+    loading,
+    login,
+    register,
+    logout,
+    updateProfile,
+  };
 
-export function useAuth() {
-  const context = useContext(AuthContext);
-  if (!context) throw new Error('useAuth must be used within an AuthProvider');
-  return context;
-}
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+};
