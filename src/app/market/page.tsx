@@ -38,17 +38,6 @@ export default function MarketplacePage() {
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
 
-  // Redirect logged-in users based on their role
-  useEffect(() => {
-    if (!authLoading && user) {
-      if (user.role === 'buyer') {
-        router.push('/buy');
-      } else if (user.role === 'farmer') {
-        router.push('/sell');
-      }
-    }
-  }, [authLoading, user, router]);
-
   // Fetch products
   useEffect(() => {
     const fetchProducts = async () => {
@@ -103,7 +92,8 @@ export default function MarketplacePage() {
 
   const cartTotal = cartItems.reduce((total, item) => total + item.cartQuantity, 0);
 
-  if (authLoading) {
+  // Show loader while auth or products loading
+  if (authLoading || loading) {
     return (
       <Layout>
         <div className="min-h-screen bg-gradient-to-b from-gray-900 to-gray-800 flex items-center justify-center">
@@ -219,11 +209,11 @@ export default function MarketplacePage() {
                   Shop as Buyer
                 </Link>
                 <Link
-                  href={user.role === 'farmer' ? '/sell' : '/auth?mode=register'}
+                  href="/sell"
                   className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors flex items-center gap-2"
                 >
                   <Store className="w-5 h-5" />
-                  {user.role === 'farmer' ? 'Sell as Farmer' : 'Become a Seller'}
+                  Sell as Farmer
                 </Link>
               </div>
             )}
@@ -231,7 +221,7 @@ export default function MarketplacePage() {
         </div>
       </div>
 
-      {/* Featured Products Section */}
+      {/* Featured Products */}
       <div className="py-12 bg-gradient-to-b from-gray-900 to-gray-800 min-h-screen">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-12">
@@ -246,15 +236,11 @@ export default function MarketplacePage() {
             </p>
           </div>
 
-          {loading ? (
-            <div className="flex justify-center items-center h-64">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-400"></div>
-            </div>
-          ) : products.length === 0 ? (
+          {products.length === 0 ? (
             <p className="text-center text-gray-400">No products available yet.</p>
           ) : (
             <div className="grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-3">
-              {products.map((product) => (
+              {products.map(product => (
                 <motion.div
                   key={product.id}
                   className="flex flex-col rounded-xl overflow-hidden"
@@ -274,17 +260,17 @@ export default function MarketplacePage() {
                       />
                       <div className="absolute inset-0 bg-black/20"></div>
                     </div>
-                    
+
                     <div className="p-6 flex flex-col flex-grow">
                       <h3 className="text-xl font-bold text-white">{product.name}</h3>
                       <p className="mt-2 text-sm text-green-400">By {product.farmerName}</p>
                       <p className="mt-2 text-gray-300 flex-grow">{product.description}</p>
                       <div className="mt-4 flex items-center justify-between">
                         <span className="text-2xl font-bold text-green-400">${product.price.toFixed(2)}</span>
-                        <button 
+                        <button
                           onClick={() => addToCart(product)}
                           className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors"
-                          disabled={!product.available || loading}
+                          disabled={!product.available}
                         >
                           {product.available ? 'Add to Cart' : 'Out of Stock'}
                         </button>
@@ -297,8 +283,8 @@ export default function MarketplacePage() {
           )}
 
           <div className="mt-16 text-center">
-            <Link 
-              href="/buy" 
+            <Link
+              href="/buy"
               className="inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-md text-white bg-green-600 hover:bg-green-700"
             >
               View All Products
@@ -307,7 +293,7 @@ export default function MarketplacePage() {
         </div>
       </div>
 
-      {/* How It Works Section */}
+      {/* How It Works */}
       <div className="bg-gray-800 py-12">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center">

@@ -1,3 +1,4 @@
+// contexts/AuthContext.tsx
 'use client';
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
@@ -18,6 +19,7 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<boolean>;
   register: (userData: Omit<User, 'id'>, password: string) => Promise<boolean>;
   logout: () => Promise<void>;
+  updateProfile: (data: Partial<User> & { [key: string]: any }) => Promise<boolean>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -30,6 +32,21 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
+  const fetchUser = async () => {
+    try {
+      const response = await fetch('/api/auth/user');
+      if (response.ok) {
+        const userData: User = await response.json();
+        setUser(userData);
+      } else {
+        setUser(null);
+      }
+    } catch (error) {
+      console.error('Failed to fetch user:', error);
+      setUser(null);
+    }
+  };
+
   // Load user on mount
   useEffect(() => {
     const loadUser = async () => {
@@ -37,13 +54,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
       try {
         const session = await getSession();
         if (session?.user) {
-          const response = await fetch('/api/user');
-          if (response.ok) {
-            const userData: User = await response.json();
-            setUser(userData);
-          } else {
-            setUser(null);
-          }
+          await fetchUser();
+        } else {
+          setUser(null);
         }
       } catch (error) {
         console.error('Failed to load user:', error);
@@ -65,13 +78,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
       if (result?.error) return false;
 
-      const response = await fetch('/api/user');
-      if (response.ok) {
-        const userData: User = await response.json();
-        setUser(userData);
-        return true;
-      }
-      return false;
+      await fetchUser();
+      return true;
     } catch (error) {
       console.error('Login error:', error);
       return false;
@@ -101,8 +109,28 @@ export function AuthProvider({ children }: AuthProviderProps) {
     setUser(null);
   };
 
+  const updateProfile = async (data: Partial<User> & { [key: string]: any }): Promise<boolean> => {
+    try {
+      const response = await fetch('/api/auth/profile', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+
+      if (response.ok) {
+        const updatedUser = await response.json();
+        setUser(updatedUser);
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error('Update profile error:', error);
+      return false;
+    }
+  };
+
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout }}>
+    <AuthContext.Provider value={{ user, loading, login, register, logout, updateProfile }}>
       {children}
     </AuthContext.Provider>
   );

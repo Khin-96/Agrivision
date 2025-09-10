@@ -1,3 +1,4 @@
+// app/sell/page.tsx
 'use client';
 
 import Layout from '@/components/layout/Layout';
@@ -5,25 +6,28 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import { toast } from 'react-hot-toast';
+import { Shield, AlertCircle } from 'lucide-react';
 
 export default function SellPage() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
 
-  const [name, setName] = useState('');
-  const [description, setDescription] = useState('');
-  const [price, setPrice] = useState<number>(0);
-  const [category, setCategory] = useState('');
-  const [quantity, setQuantity] = useState<number>(0);
-  const [unit, setUnit] = useState('');
-  const [imageUrl, setImageUrl] = useState('');
+  const [formData, setFormData] = useState({
+    name: '',
+    description: '',
+    price: 0,
+    category: '',
+    quantity: 0,
+    unit: '',
+    imageUrl: ''
+  });
   const [loading, setLoading] = useState(false);
 
-  // Check if user is authenticated and is a farmer
+  // Redirect unauthenticated users
   useEffect(() => {
-    if (!authLoading && (!user || user.role !== 'farmer')) {
-      toast.error('Only verified farmers can list products');
-      router.push('/market');
+    if (!authLoading && !user) {
+      toast.error('Please log in to list products');
+      router.push('/auth');
     }
   }, [authLoading, user, router]);
 
@@ -37,20 +41,17 @@ export default function SellPage() {
     );
   }
 
-  if (!user || user.role !== 'farmer') {
-    return (
-      <Layout>
-        <div className="min-h-screen flex items-center justify-center text-center px-4">
-          <p className="text-white text-lg">
-            Only verified farmers can list products. Please log in as a farmer.
-          </p>
-        </div>
-      </Layout>
-    );
-  }
+  if (!user) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (!user.idVerified) {
+      toast.error('Please verify your ID before listing products');
+      router.push('/profile');
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -58,15 +59,9 @@ export default function SellPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          name,
-          description,
-          price,
-          category,
-          quantity,
-          unit,
-          images: [imageUrl],
-          farmerId: user.id,
-          farmerName: user.name
+          ...formData,
+          sellerId: user.id,
+          sellerName: user.name
         }),
       });
 
@@ -82,100 +77,166 @@ export default function SellPage() {
     }
   };
 
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({
+      ...prev,
+      [name]: name === 'price' || name === 'quantity' ? Number(value) : value
+    }));
+  };
+
   return (
     <Layout>
       <div className="max-w-3xl mx-auto py-12 px-6">
-        <h1 className="text-3xl font-bold text-white mb-8">List a New Product</h1>
+        <h1 className="text-3xl font-bold text-white mb-2">List a New Product</h1>
+
+        {!user.idVerified && (
+          <div className="bg-yellow-500/10 border border-yellow-500/50 rounded-lg p-4 mb-6 flex items-start">
+            <AlertCircle className="w-5 h-5 text-yellow-400 mr-3 mt-0.5" />
+            <div>
+              <p className="text-yellow-400 font-medium">Verification Required</p>
+              <p className="text-yellow-300 text-sm mt-1">
+                You need to verify your ID before listing products. 
+                <button 
+                  onClick={() => router.push('/profile')}
+                  className="ml-2 underline hover:text-yellow-200"
+                >
+                  Verify now
+                </button>
+              </p>
+            </div>
+          </div>
+        )}
+
         <form
           onSubmit={handleSubmit}
-          className="bg-gray-800 p-6 rounded-lg shadow-md space-y-4"
+          className="bg-gray-800/50 backdrop-blur-lg border border-gray-700/50 p-8 rounded-2xl shadow-xl space-y-6"
         >
           <div>
-            <label className="text-white block mb-1">Product Name</label>
+            <label className="text-white block mb-2 font-medium">Product Name</label>
             <input
               type="text"
-              className="w-full p-2 rounded bg-gray-700 text-white"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
+              name="name"
+              className="w-full p-3.5 rounded-lg bg-gray-700/50 border border-gray-600 text-white focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-colors"
+              value={formData.name}
+              onChange={handleInputChange}
               required
+              placeholder="Enter product name"
             />
           </div>
 
           <div>
-            <label className="text-white block mb-1">Description</label>
+            <label className="text-white block mb-2 font-medium">Description</label>
             <textarea
-              className="w-full p-2 rounded bg-gray-700 text-white"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
+              name="description"
+              className="w-full p-3.5 rounded-lg bg-gray-700/50 border border-gray-600 text-white focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-colors"
+              value={formData.description}
+              onChange={handleInputChange}
               required
+              rows={4}
+              placeholder="Describe your product in detail"
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
-              <label className="text-white block mb-1">Price ($)</label>
+              <label className="text-white block mb-2 font-medium">Price ($)</label>
               <input
                 type="number"
-                className="w-full p-2 rounded bg-gray-700 text-white"
-                value={price}
-                onChange={(e) => setPrice(parseFloat(e.target.value))}
+                name="price"
+                step="0.01"
+                min="0"
+                className="w-full p-3.5 rounded-lg bg-gray-700/50 border border-gray-600 text-white focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-colors"
+                value={formData.price}
+                onChange={handleInputChange}
                 required
               />
             </div>
 
             <div>
-              <label className="text-white block mb-1">Quantity</label>
+              <label className="text-white block mb-2 font-medium">Quantity</label>
               <input
                 type="number"
-                className="w-full p-2 rounded bg-gray-700 text-white"
-                value={quantity}
-                onChange={(e) => setQuantity(parseInt(e.target.value))}
+                name="quantity"
+                min="1"
+                className="w-full p-3.5 rounded-lg bg-gray-700/50 border border-gray-600 text-white focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-colors"
+                value={formData.quantity}
+                onChange={handleInputChange}
                 required
               />
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
-              <label className="text-white block mb-1">Unit</label>
+              <label className="text-white block mb-2 font-medium">Unit</label>
               <input
                 type="text"
-                className="w-full p-2 rounded bg-gray-700 text-white"
-                value={unit}
-                onChange={(e) => setUnit(e.target.value)}
+                name="unit"
+                className="w-full p-3.5 rounded-lg bg-gray-700/50 border border-gray-600 text-white focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-colors"
+                value={formData.unit}
+                onChange={handleInputChange}
                 required
+                placeholder="e.g., kg, lb, piece"
               />
             </div>
 
             <div>
-              <label className="text-white block mb-1">Category</label>
-              <input
-                type="text"
-                className="w-full p-2 rounded bg-gray-700 text-white"
-                value={category}
-                onChange={(e) => setCategory(e.target.value)}
+              <label className="text-white block mb-2 font-medium">Category</label>
+              <select
+                name="category"
+                value={formData.category}
+                onChange={handleInputChange}
+                className="w-full p-3.5 rounded-lg bg-gray-700/50 border border-gray-600 text-white focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-colors"
                 required
-              />
+              >
+                <option value="">Select category</option>
+                <option value="vegetables">Vegetables</option>
+                <option value="fruits">Fruits</option>
+                <option value="grains">Grains</option>
+                <option value="dairy">Dairy</option>
+                <option value="meat">Meat</option>
+                <option value="poultry">Poultry</option>
+                <option value="seafood">Seafood</option>
+                <option value="herbs">Herbs</option>
+                <option value="other">Other</option>
+              </select>
             </div>
           </div>
 
           <div>
-            <label className="text-white block mb-1">Image URL</label>
+            <label className="text-white block mb-2 font-medium">Image URL</label>
             <input
-              type="text"
-              className="w-full p-2 rounded bg-gray-700 text-white"
-              value={imageUrl}
-              onChange={(e) => setImageUrl(e.target.value)}
+              type="url"
+              name="imageUrl"
+              className="w-full p-3.5 rounded-lg bg-gray-700/50 border border-gray-600 text-white focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-colors"
+              value={formData.imageUrl}
+              onChange={handleInputChange}
               required
+              placeholder="https://example.com/image.jpg"
             />
           </div>
 
           <button
             type="submit"
-            className="bg-green-600 hover:bg-green-700 text-white py-2 px-4 rounded w-full"
-            disabled={loading}
+            disabled={loading || !user.idVerified}
+            className="w-full py-3.5 px-6 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded-lg font-medium transition-colors flex items-center justify-center"
           >
-            {loading ? 'Listing...' : 'List Product'}
+            {user.idVerified ? (
+              loading ? (
+                <>
+                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
+                  Listing...
+                </>
+              ) : (
+                'List Product'
+              )
+            ) : (
+              <>
+                <Shield className="w-5 h-5 mr-2" />
+                Verification Required
+              </>
+            )}
           </button>
         </form>
       </div>
