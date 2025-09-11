@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { analyzeContent } from '@/lib/gemini';
+import { analyzeImage } from '@/lib/gemini'; // Import analyzeImage directly
 import { writeFile, mkdir } from 'fs/promises';
 import { join } from 'path';
 import { existsSync } from 'fs';
@@ -74,13 +74,27 @@ export async function POST(request: NextRequest): Promise<NextResponse<AnalysisR
     const filePath = join(uploadsDir, filename);
 
     try {
-      // Save file to disk
+      // Save file to disk (optional - for record keeping)
       const bytes = await file.arrayBuffer();
       const buffer = Buffer.from(bytes);
       await writeFile(filePath, buffer);
 
-      // Analyze the content with Gemini AI
-      const analysisResult = await analyzeContent(filePath, type as 'image' | 'video');
+      // Analyze the content with Gemini AI - pass the File object directly
+      let analysisResult;
+      if (type === 'image') {
+        analysisResult = await analyzeImage(file);
+      } else {
+        // For video, you might need a different approach since Gemini might not support video
+        // For now, let's return a placeholder or use image analysis if possible
+        // You might want to extract a frame from the video and analyze that
+        return NextResponse.json(
+          { 
+            success: false, 
+            error: 'Video analysis is not yet implemented. Please upload images only for now.' 
+          },
+          { status: 400 }
+        );
+      }
 
       // Return successful response
       return NextResponse.json({
