@@ -92,11 +92,11 @@ export default function VisionPage() {
 
     } catch (error: any) {
       console.error(error);
-      setChatError(language === 'swahili' ? 'Hitilafu! Jaribu tena.' : 'Oops! Something went wrong.');
+      setChatError(language === 'swahili' ? 'Hitilafu! Jaribu tena.' : 'An error occurred. Please try again.');
       setChatMessages(prev => [...prev, {
         id: (Date.now() + 2).toString(),
         role: 'assistant',
-        content: language === 'swahili' ? 'Pole, nimekumbana na hitilafu. Jaribu baadae.' : 'Sorry, I hit a snag. Try again later.',
+        content: language === 'swahili' ? 'Samahani, kuna hitilafu ya kiufundi. Tafadhali jaribu tena baadaye.' : 'Apologies, a technical error occurred. Please try again later.',
         timestamp: new Date(),
       }]);
     } finally {
@@ -112,21 +112,32 @@ export default function VisionPage() {
   };
 
   return (
-    <div className="flex justify-center items-center h-screen bg-gradient-to-r from-green-100 via-green-50 to-green-100 p-4">
-      <div className="w-full max-w-2xl bg-white shadow-2xl rounded-3xl flex flex-col h-[80vh] overflow-hidden">
+    <div className="flex justify-center items-center h-screen bg-gray-50 p-4">
+      <div className="w-full max-w-2xl bg-white shadow-lg rounded-lg flex flex-col h-[80vh] overflow-hidden border border-gray-200">
         {/* Header */}
-        <div className="bg-gradient-to-r from-green-600 to-green-700 text-white flex justify-between items-center px-6 py-4 rounded-t-3xl">
-          <div className="flex items-center space-x-2">
-            <Bot size={28} />
-            <h1 className="text-2xl font-bold tracking-wide">Vision AI 🌱</h1>
-          </div>
+        <div className="bg-white border-b border-gray-200 flex justify-between items-center px-6 py-4">
           <div className="flex items-center space-x-3">
-            <button onClick={toggleLanguage} className="flex items-center gap-1 bg-green-500/20 hover:bg-green-500/30 px-2 py-1 rounded-full transition">
-              <Globe size={18} />
-              <span className="text-sm">{language === 'english' ? 'EN' : 'SW'}</span>
+            <div className="p-2 bg-blue-50 rounded-lg">
+              <Bot size={24} className="text-blue-600" />
+            </div>
+            <div>
+              <h1 className="text-lg font-semibold text-gray-800">Vision AI Assistant</h1>
+              <p className="text-xs text-gray-500">Agricultural intelligence platform</p>
+            </div>
+          </div>
+          <div className="flex items-center space-x-2">
+            <button 
+              onClick={toggleLanguage} 
+              className="flex items-center gap-2 text-gray-600 hover:text-gray-800 px-3 py-1.5 rounded-md border border-gray-300 hover:border-gray-400 transition-all text-sm"
+            >
+              <Globe size={16} />
+              <span>{language === 'english' ? 'EN' : 'SW'}</span>
             </button>
-            <button onClick={() => setIsChatMinimized(!isChatMinimized)} className="p-1 rounded-full hover:bg-green-500/20 transition">
-              {isChatMinimized ? <Play size={20} /> : <Pause size={20} />}
+            <button 
+              onClick={() => setIsChatMinimized(!isChatMinimized)} 
+              className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors"
+            >
+              {isChatMinimized ? <Play size={18} /> : <Pause size={18} />}
             </button>
           </div>
         </div>
@@ -137,28 +148,35 @@ export default function VisionPage() {
             <div ref={chatContainerRef} className="flex-1 overflow-y-auto p-6 space-y-4 bg-gray-50">
               {chatMessages.length === 0 ? (
                 <div className="text-center text-gray-500 mt-10">
-                  <Bot size={48} className="mx-auto text-green-400 mb-3" />
-                  <p className="text-lg">{language === 'swahili' ? 'Habari! Mimi ni Vision, AI yako ya kilimo. Tunaonaje?' : 'Hi there! I\'m Vision, your farming AI. What\'s up?'}</p>
+                  <div className="mx-auto mb-4 bg-blue-50 p-4 rounded-full w-16 h-16 flex items-center justify-center">
+                    <Bot size={32} className="text-blue-600" />
+                  </div>
+                  <p className="text-gray-600 mb-1">Vision </p>
+                  <p className="text-sm text-gray-500">{language === 'swahili' ? 'Karibu! Ninawezaje kukusaidia leo?' : 'Talk to Vision and get insights Today'}</p>
                 </div>
               ) : (
                 chatMessages.map(msg => (
                   <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                    <div className={`max-w-xs lg:max-w-md p-4 rounded-2xl break-words ${
-                      msg.role === 'user' ? 'bg-green-100 text-green-900 rounded-br-none' : 'bg-blue-100 text-blue-900 rounded-bl-none'
+                    <div className={`max-w-xs lg:max-w-md p-4 rounded-lg break-words ${
+                      msg.role === 'user' 
+                        ? 'bg-blue-600 text-white rounded-br-md' 
+                        : 'bg-white text-gray-800 border border-gray-200 rounded-bl-md'
                     }`}>
                       <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
-                      <p className="text-xs opacity-70 mt-1 text-right">{msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+                      <p className={`text-xs mt-1 text-right ${msg.role === 'user' ? 'text-blue-100' : 'text-gray-500'}`}>
+                        {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </p>
                     </div>
                   </div>
                 ))
               )}
               {isLoadingResponse && (
                 <div className="flex justify-start">
-                  <div className="bg-blue-100 text-blue-900 p-4 rounded-2xl rounded-bl-none max-w-xs">
-                    <div className="flex space-x-1">
-                      <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce"></div>
-                      <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce delay-200"></div>
-                      <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce delay-400"></div>
+                  <div className="bg-white border border-gray-200 p-4 rounded-lg rounded-bl-md max-w-xs">
+                    <div className="flex space-x-1.5">
+                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
+                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce delay-150"></div>
+                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce delay-300"></div>
                     </div>
                   </div>
                 </div>
@@ -167,33 +185,35 @@ export default function VisionPage() {
 
             {/* Error */}
             {chatError && (
-              <div className="bg-red-50 border border-red-200 p-3 mx-6 rounded-lg flex items-center">
-                <AlertCircle size={16} className="text-red-500 mr-2" />
+              <div className="mx-6 mt-2 bg-red-50 border border-red-200 p-3 rounded-md flex items-center">
+                <AlertCircle size={16} className="text-red-500 mr-2 flex-shrink-0" />
                 <p className="text-red-700 text-sm">{chatError}</p>
               </div>
             )}
 
             {/* Input */}
-            <div className="border-t border-gray-200 px-6 py-4 bg-white flex flex-col">
-              <div className="flex space-x-2">
+            <div className="border-t border-gray-200 px-6 py-4 bg-white">
+              <div className="flex space-x-3">
                 <textarea
                   value={userInput}
                   onChange={e => setUserInput(e.target.value)}
                   onKeyPress={handleKeyPress}
-                  placeholder={language === 'swahili' ? 'Andika hapa...' : 'Type your question...'}
-                  className="flex-1 border border-gray-300 rounded-2xl px-4 py-2 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent min-h-[40px] max-h-32 overflow-y-auto resize-none"
+                  placeholder={language === 'swahili' ? 'Andika swali lako hapa...' : 'Type your question here...'}
+                  className="flex-1 border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent min-h-[44px] max-h-32 overflow-y-auto resize-none text-sm"
                   disabled={isLoadingResponse}
                   rows={1}
                 />
                 <button
                   onClick={sendMessage}
                   disabled={!userInput.trim() || isLoadingResponse}
-                  className="bg-green-600 text-white px-4 py-2 rounded-2xl flex items-center justify-center hover:bg-green-700 disabled:opacity-50 transition"
+                  className="bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center justify-center hover:bg-blue-700 disabled:opacity-50 transition-colors h-11 w-11 flex-shrink-0"
                 >
-                  {isLoadingResponse ? <Loader2 size={20} className="animate-spin" /> : <Send size={20} />}
+                  {isLoadingResponse ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />}
                 </button>
               </div>
-              <p className="text-xs text-gray-500 mt-1 text-center">{language === 'swahili' ? 'Enter kutuma, Shift+Enter kwa mstari mpya' : 'Press Enter to send, Shift+Enter for new line'}</p>
+              <p className="text-xs text-gray-500 mt-2 text-center">
+                {language === 'swahili' ? 'Bonyeza Enter kutuma, Shift+Enter kwa mstari mpya' : 'Press Enter to send, Shift+Enter for new line'}
+              </p>
             </div>
           </>
         )}
