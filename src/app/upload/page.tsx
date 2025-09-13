@@ -1,10 +1,9 @@
 'use client';
-
+import Layout from '@/components/layout/Layout';
 import React, { useState } from 'react';
 import Vision from './components/Vision';
 import Download from './components/Download';
 import Upload from './components/FileUpload';
-
 
 export default function Home() {
   // State management
@@ -91,32 +90,34 @@ export default function Home() {
   };
 
   return (
-    <div className="min-h-screen bg-green-50 p-4">
-      <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Left Column - Upload and Download */}
-        <div className="space-y-6">
-          <Upload 
-            onFileUpload={handleFileUpload} 
-            uploadProgress={uploadProgress} 
-          />
-          <Download 
-            analysisResults={analysisResults}
-            onDownloadAnalysis={handleDownloadAnalysis}
-            onDownloadAnalysisAsPDF={handleDownloadAnalysisAsPDF}
-            onDownloadAllAnalyses={handleDownloadAllAnalyses}
-            onDownloadAllAnalysesAsPDF={handleDownloadAllAnalysesAsPDF}
-          />
-        </div>
-        
-        {/* Right Column - Vision Chatbot */}
-        <div>
-          <Vision 
-            analysisResults={analysisResults}
-            language={language}
-            onLanguageToggle={toggleLanguage}
-          />
+    <Layout>
+      <div className="min-h-screen bg-green-50 p-4 pt-24">
+        <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Left Column - Upload and Download */}
+          <div className="space-y-6">
+            <Upload 
+              onFileUpload={handleFileUpload} 
+              uploadProgress={uploadProgress} 
+            />
+            <Download 
+              analysisResults={analysisResults}
+              onDownloadAnalysis={handleDownloadAnalysis}
+              onDownloadAnalysisAsPDF={handleDownloadAnalysisAsPDF}
+              onDownloadAllAnalyses={handleDownloadAllAnalyses}
+              onDownloadAllAnalysesAsPDF={handleDownloadAllAnalysesAsPDF}
+            />
+          </div>
+          
+          {/* Right Column - Vision Chatbot */}
+          <div>
+            <Vision 
+              analysisResults={analysisResults}
+              language={language}
+              onLanguageToggle={toggleLanguage}
+            />
+          </div>
         </div>
       </div>
-    </div>
+    </Layout>
   );
 }
