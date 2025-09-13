@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { analyzeImage } from '@/lib/gemini'; // Import analyzeImage directly
+import { analyzeImage, analyzeContent } from '@/lib/gemini'; // Import both functions
 import { writeFile, mkdir } from 'fs/promises';
 import { join } from 'path';
 import { existsSync } from 'fs';
@@ -17,6 +17,10 @@ interface AnalysisResponse {
   error?: string;
   filename?: string;
   type?: string;
+  categories?: string[];
+  suggestions?: string[];
+  risks?: string[];
+  didYouKnow?: string[];
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse<AnalysisResponse>> {
@@ -79,29 +83,33 @@ export async function POST(request: NextRequest): Promise<NextResponse<AnalysisR
       const buffer = Buffer.from(bytes);
       await writeFile(filePath, buffer);
 
-      // Analyze the content with Gemini AI - pass the File object directly
+      // Analyze the content with Gemini AI
       let analysisResult;
+      
       if (type === 'image') {
+        // Use analyzeImage for images
         analysisResult = await analyzeImage(file);
       } else {
-        // For video, you might need a different approach since Gemini might not support video
-        // For now, let's return a placeholder or use image analysis if possible
-        // You might want to extract a frame from the video and analyze that
-        return NextResponse.json(
-          { 
-            success: false, 
-            error: 'Video analysis is not yet implemented. Please upload images only for now.' 
-          },
-          { status: 400 }
-        );
+        // For video, we need to handle it differently
+        // Since Gemini may not support direct video analysis, we can:
+        // 1. Extract a frame from the video (requires additional processing)
+        // 2. Or use a different approach
+        
+        // For now, let's use the analyzeContent function which handles both
+        // Note: You may need to modify your gemini.ts to handle video files properly
+        analysisResult = await analyzeContent(file, 'image');
       }
 
-      // Return successful response
+      // Return successful response with structured data
       return NextResponse.json({
         success: true,
         analysis: analysisResult.analysis,
         filename: file.name,
-        type: type
+        type: type,
+        categories: analysisResult.categories,
+        suggestions: analysisResult.suggestions,
+        risks: analysisResult.risks,
+        didYouKnow: analysisResult.didYouKnow
       });
 
     } catch (fileError) {
@@ -137,6 +145,16 @@ export async function POST(request: NextRequest): Promise<NextResponse<AnalysisR
             error: 'AI analysis service temporarily unavailable. Please try again later.' 
           },
           { status: 503 }
+        );
+      }
+      
+      if (analysisError.message.includes('video') || analysisError.message.includes('Video')) {
+        return NextResponse.json(
+          { 
+            success: false, 
+            error: 'Video analysis requires additional processing. Please try with an image instead.' 
+          },
+          { status: 400 }
         );
       }
     }

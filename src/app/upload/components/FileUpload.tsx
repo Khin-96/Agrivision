@@ -1,34 +1,114 @@
 // src/app/upload/components/FileUpload.tsx
 'use client';
 
-import React, { useRef } from 'react';
+import React, { useRef, useState } from 'react';
 import { Upload as UploadIcon, Camera, Video, Image as ImageIcon, AlertCircle } from 'lucide-react';
+import { analyzeFarmContent, AnalysisResponse } from '@/lib/api';
 
 interface UploadProgress {
   progress: number;
   status: 'idle' | 'uploading' | 'analyzing' | 'success' | 'error';
   error?: string;
+  result?: AnalysisResponse;
 }
 
 interface FileUploadProps {
-  onFileUpload: (file: File, type: 'image' | 'video') => void;
-  uploadProgress: UploadProgress;
+  onAnalysisComplete?: (result: AnalysisResponse) => void;
 }
 
-// Rename the component function to FileUpload
-export default function FileUpload({ onFileUpload, uploadProgress }: FileUploadProps) {
+export default function FileUpload({ onAnalysisComplete }: FileUploadProps) {
   const imageInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
+  const [uploadProgress, setUploadProgress] = useState<UploadProgress>({
+    progress: 0,
+    status: 'idle'
+  });
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>, type: 'image' | 'video') => {
+  const handleFileUpload = async (file: File, type: 'image' | 'video') => {
+    try {
+      // Reset progress
+      setUploadProgress({
+        progress: 0,
+        status: 'uploading'
+      });
+
+      // Simulate upload progress (you can replace this with actual progress tracking)
+      const progressInterval = setInterval(() => {
+        setUploadProgress(prev => {
+          if (prev.progress >= 90) {
+            clearInterval(progressInterval);
+            return { ...prev, progress: 90, status: 'analyzing' };
+          }
+          return { ...prev, progress: prev.progress + 10 };
+        });
+      }, 200);
+
+      // Call the API
+      const result = await analyzeFarmContent(file, type);
+
+      clearInterval(progressInterval);
+      
+      if (result.success) {
+        setUploadProgress({
+          progress: 100,
+          status: 'success',
+          result
+        });
+        
+        if (onAnalysisComplete) {
+          onAnalysisComplete(result);
+        }
+      } else {
+        setUploadProgress({
+          progress: 0,
+          status: 'error',
+          error: result.error || 'Analysis failed'
+        });
+      }
+
+    } catch (error) {
+      setUploadProgress({
+        progress: 0,
+        status: 'error',
+        error: error instanceof Error ? error.message : 'Upload failed. Please try again.'
+      });
+    }
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>, type: 'image' | 'video') => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (type === 'image' && !file.type.startsWith('image/')) return;
-    if (type === 'video' && !file.type.startsWith('video/')) return;
-    if (file.size > 100 * 1024 * 1024) return;
+    // Validate file type
+    if (type === 'image' && !file.type.startsWith('image/')) {
+      setUploadProgress({
+        progress: 0,
+        status: 'error',
+        error: 'Please select a valid image file'
+      });
+      return;
+    }
 
-    onFileUpload(file, type);
+    if (type === 'video' && !file.type.startsWith('video/')) {
+      setUploadProgress({
+        progress: 0,
+        status: 'error',
+        error: 'Please select a valid video file'
+      });
+      return;
+    }
+
+    // Validate file size (50MB max as per your backend)
+    if (file.size > 50 * 1024 * 1024) {
+      setUploadProgress({
+        progress: 0,
+        status: 'error',
+        error: 'File too large. Maximum size is 50MB'
+      });
+      return;
+    }
+
+    handleFileUpload(file, type);
   };
 
   const handleDrop = (e: React.DragEvent, type: 'image' | 'video') => {
@@ -36,10 +116,9 @@ export default function FileUpload({ onFileUpload, uploadProgress }: FileUploadP
     const file = e.dataTransfer.files[0];
     if (!file) return;
 
-    if (type === 'image' && !file.type.startsWith('image/')) return;
-    if (type === 'video' && !file.type.startsWith('video/')) return;
-
-    onFileUpload(file, type);
+    handleFileSelect({
+      target: { files: [file] }
+    } as React.ChangeEvent<HTMLInputElement>, type);
   };
 
   const handleDragOver = (e: React.DragEvent) => e.preventDefault();
@@ -62,13 +141,13 @@ export default function FileUpload({ onFileUpload, uploadProgress }: FileUploadP
             ref={imageInputRef}
             type="file"
             accept="image/*"
-            onChange={(e) => handleFileUpload(e, 'image')}
+            onChange={(e) => handleFileSelect(e, 'image')}
             className="hidden"
           />
           <div className="flex flex-col items-center">
             <UploadIcon size={48} className="text-green-500 mb-2" />
             <p className="text-green-700 font-medium">Click to upload or drag and drop</p>
-            <p className="text-gray-500 text-sm mt-1">JPG, PNG, WEBP (Max 100MB)</p>
+            <p className="text-gray-500 text-sm mt-1">JPG, PNG, WEBP (Max 50MB)</p>
           </div>
         </div>
       </div>
@@ -89,13 +168,13 @@ export default function FileUpload({ onFileUpload, uploadProgress }: FileUploadP
             ref={videoInputRef}
             type="file"
             accept="video/*"
-            onChange={(e) => handleFileUpload(e, 'video')}
+            onChange={(e) => handleFileSelect(e, 'video')}
             className="hidden"
           />
           <div className="flex flex-col items-center">
             <Camera size={48} className="text-green-500 mb-2" />
             <p className="text-green-700 font-medium">Click to upload or drag and drop</p>
-            <p className="text-gray-500 text-sm mt-1">MP4, MOV, AVI (Max 100MB)</p>
+            <p className="text-gray-500 text-sm mt-1">MP4, MOV, AVI (Max 50MB)</p>
           </div>
         </div>
       </div>
@@ -120,13 +199,19 @@ export default function FileUpload({ onFileUpload, uploadProgress }: FileUploadP
               <div className="w-full bg-gray-200 rounded-full h-2.5">
                 <div className="bg-green-600 h-2.5 rounded-full animate-pulse" style={{ width: '100%' }} />
               </div>
-              <p className="text-sm text-gray-600">Analyzing content...</p>
+              <p className="text-sm text-gray-600">Analyzing content with AI...</p>
             </div>
           )}
           {uploadProgress.status === 'error' && uploadProgress.error && (
             <div className="bg-red-50 border border-red-200 p-3 rounded-lg flex items-center">
               <AlertCircle size={16} className="text-red-500 mr-2" />
               <p className="text-red-700 text-sm">{uploadProgress.error}</p>
+            </div>
+          )}
+          {uploadProgress.status === 'success' && uploadProgress.result && (
+            <div className="bg-green-50 border border-green-200 p-3 rounded-lg">
+              <p className="text-green-700 text-sm font-medium">Analysis Complete!</p>
+              <p className="text-green-600 text-sm mt-1">{uploadProgress.result.analysis}</p>
             </div>
           )}
         </div>

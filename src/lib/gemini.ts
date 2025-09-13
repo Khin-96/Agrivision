@@ -6,6 +6,9 @@ export interface GeminiAnalysisResult {
   confidence?: number;
   categories?: string[];
   suggestions?: string[];
+  schedule?: FarmingSchedule;
+  risks?: string[];
+  didYouKnow?: string[];
 }
 
 export interface GeminiConfig {
@@ -15,12 +18,21 @@ export interface GeminiConfig {
   maxOutputTokens?: number;
 }
 
+export interface FarmingSchedule {
+  plantingTimes?: string[];
+  harvestingTimes?: string[];
+  irrigationSchedule?: string[];
+  nutrientManagement?: string[];
+  cropRotation?: string[];
+  treatmentPlan?: string[];
+}
+
 // Default configuration for farming analysis
 const DEFAULT_CONFIG: GeminiConfig = {
   temperature: 0.4,
   topP: 0.8,
   topK: 40,
-  maxOutputTokens: 1000,
+  maxOutputTokens: 2000, // Increased for more comprehensive analysis
 };
 
 // Safety settings for content analysis
@@ -72,43 +84,60 @@ function getMimeType(file: File): string {
   return file.type;
 }
 
-// Enhanced prompt for clean formatting without markdown
+// Enhanced prompt for comprehensive agricultural analysis
 function generatePrompt(type: 'image' | 'video', filename: string): string {
-  const basePrompt = `You are an expert agricultural AI assistant. Analyze this ${type} and provide a clean, well-structured analysis without any markdown formatting.
+  const basePrompt = `You are an expert agricultural AI assistant with knowledge in all farming domains including crops, livestock, horticulture, floriculture, aquaculture, and more. Analyze this ${type} comprehensively and provide a detailed, well-structured analysis without any markdown formatting.
 
 ANALYSIS FORMAT:
-Plant Identification: [Identify the plant/crop]
-Health Assessment: [Assess plant health]
-Growth Stage: [Current growth phase]
+Identification: [Identify the subject - plant, animal, fish, etc.]
+Health Assessment: [Assess health status]
+Growth Stage: [Current growth phase or life stage]
 Visible Issues: [Any problems observed]
 
-Soil Conditions: [Soil quality and moisture]
-Irrigation Status: [Watering assessment]
-Pest Presence: [Any pests detected]
-Disease Symptoms: [Signs of disease]
-Nutrient Status: [Nutrient assessment]
+Environmental Conditions: [Soil/water quality, weather patterns, etc.]
+Nutritional Status: [Nutrient assessment]
+Pest/Disease Presence: [Any pests or diseases detected]
+Equipment/Infrastructure: [Tools, equipment or facilities visible]
 
-Equipment: [Tools or equipment visible]
-Infrastructure: [Structures or facilities]
+RECOMMENDATIONS:
+Immediate Actions: [Urgent steps to take]
+- [Action 1]
+- [Action 2]
 
-Environmental Factors: [Weather, light, season]
-Lighting Conditions: [Light exposure]
-Seasonal Indicators: [Time of year clues]
+Treatment Plan: [Specific treatments if needed]
+- [Treatment 1]
+- [Treatment 2]
 
-Recommendations: [Actionable advice]
-- [Specific recommendation 1]
-- [Specific recommendation 2]
-- [Specific recommendation 3]
+PERSONALIZED FARMING SCHEDULE:
+Optimal Planting/Harvesting Times: [Based on analysis and current conditions]
+Irrigation Schedule: [Tailored watering recommendations]
+Nutrient Management: [Fertilization strategy]
+Crop Rotation/Livestock Management: [Rotation or management plan]
 
-Risk Assessment: [Potential concerns]
-- [Risk 1]
-- [Risk 2]
+RISK ASSESSMENT:
+- [Risk 1 with severity level]
+- [Risk 2 with severity level]
 
-IMPORTANT: Use only plain text with clear section headings followed by colons. No markdown symbols (#, *, **, etc.). Use bullet points with hyphens only.
+DID YOU KNOW? (Share 1-2 interesting facts relevant to this subject):
+- [Fact 1]
+- [Fact 2]
 
-Filename: ${filename}`;
+IMPORTANT: Use only plain text with clear section headings followed by colons. No markdown symbols (#, *, **, etc.). Use bullet points with hyphens only. Be specific and actionable in recommendations.
+
+Filename: ${filename}
+Current season: ${getCurrentSeason()} (approximate)
+Current date: ${new Date().toDateString()}`;
 
   return basePrompt;
+}
+
+// Helper function to determine current season (approximate)
+function getCurrentSeason(): string {
+  const month = new Date().getMonth();
+  if (month >= 2 && month <= 4) return 'Spring';
+  if (month >= 5 && month <= 7) return 'Summer';
+  if (month >= 8 && month <= 10) return 'Fall';
+  return 'Winter';
 }
 
 // Clean up markdown formatting from the response
@@ -130,6 +159,72 @@ function cleanAnalysisText(text: string): string {
   cleaned = cleaned.replace(/([a-z])\.([A-Z])/g, '$1. $2');
   
   return cleaned.trim();
+}
+
+// Parse the analysis to extract structured data
+function parseAnalysisResult(analysis: string): GeminiAnalysisResult {
+  const result: GeminiAnalysisResult = { analysis };
+  const lines = analysis.split('\n');
+  
+  // Extract categories
+  const categories: string[] = [];
+  if (analysis.toLowerCase().includes('crop')) categories.push('crops');
+  if (analysis.toLowerCase().includes('livestock') || analysis.toLowerCase().includes('animal')) categories.push('livestock');
+  if (analysis.toLowerCase().includes('flower') || analysis.toLowerCase().includes('ornamental')) categories.push('floriculture');
+  if (analysis.toLowerCase().includes('aqua') || analysis.toLowerCase().includes('fish')) categories.push('aquaculture');
+  if (analysis.toLowerCase().includes('horticulture') || analysis.toLowerCase().includes('garden')) categories.push('horticulture');
+  if (categories.length === 0) categories.push('general agriculture');
+  
+  result.categories = categories;
+  
+  // Extract suggestions
+  const suggestions: string[] = [];
+  const suggestionLines = lines.filter(line => 
+    line.trim().startsWith('-') && 
+    (line.toLowerCase().includes('recommend') || 
+     line.toLowerCase().includes('suggest') ||
+     line.toLowerCase().includes('action') ||
+     line.toLowerCase().includes('treatment'))
+  );
+  
+  suggestionLines.forEach(line => {
+    const suggestion = line.replace(/^-/, '').trim();
+    if (suggestion) suggestions.push(suggestion);
+  });
+  
+  if (suggestions.length > 0) result.suggestions = suggestions;
+  
+  // Extract risks
+  const risks: string[] = [];
+  const riskSectionIndex = lines.findIndex(line => line.toLowerCase().includes('risk assessment'));
+  if (riskSectionIndex !== -1) {
+    for (let i = riskSectionIndex + 1; i < lines.length; i++) {
+      if (lines[i].trim().startsWith('-')) {
+        risks.push(lines[i].replace(/^-/, '').trim());
+      } else if (lines[i].trim() && !lines[i].toLowerCase().includes('did you know')) {
+        break;
+      }
+    }
+  }
+  
+  if (risks.length > 0) result.risks = risks;
+  
+  // Extract "Did You Know" facts
+  const didYouKnow: string[] = [];
+  const didYouKnowIndex = lines.findIndex(line => line.toLowerCase().includes('did you know'));
+  if (didYouKnowIndex !== -1) {
+    for (let i = didYouKnowIndex + 1; i < lines.length; i++) {
+      if (lines[i].trim().startsWith('-')) {
+        didYouKnow.push(lines[i].replace(/^-/, '').trim());
+      } else if (lines[i].trim()) {
+        break;
+      }
+    }
+  }
+  
+  if (didYouKnow.length > 0) result.didYouKnow = didYouKnow;
+  
+  return result;
 }
 
 // Analyze image content with Gemini
@@ -168,9 +263,8 @@ export async function analyzeImage(
       throw new Error('Empty response from Gemini API');
     }
 
-    return {
-      analysis: cleanAnalysisText(analysis.trim()),
-    };
+    const cleanedAnalysis = cleanAnalysisText(analysis.trim());
+    return parseAnalysisResult(cleanedAnalysis);
 
   } catch (error) {
     console.error('Gemini image analysis error:', error);
@@ -189,7 +283,7 @@ export async function analyzeImage(
   }
 }
 
-// Analyze text content with Gemini (for ID verification)
+// Analyze text content with Gemini (for ID verification and text-based queries)
 export async function analyzeText(
   text: string,
   config: GeminiConfig = DEFAULT_CONFIG
@@ -202,7 +296,36 @@ export async function analyzeText(
       safetySettings: SAFETY_SETTINGS
     });
 
-    const result = await model.generateContent(text);
+    // Enhanced prompt for text analysis
+    const enhancedText = `As an expert agricultural advisor, analyze the following information and provide comprehensive recommendations for farming practices, including personalized schedules, treatment plans, and management strategies. Consider all types of agriculture: crops, livestock, horticulture, floriculture, aquaculture, etc.
+
+Provide your analysis in this format:
+
+ANALYSIS:
+[Your analysis of the situation]
+
+RECOMMENDATIONS:
+Immediate Actions:
+- [Action 1]
+- [Action 2]
+
+Personalized Schedule:
+- Planting/Harvesting: [Recommendations]
+- Irrigation: [Schedule]
+- Nutrient Management: [Plan]
+- Rotation/Management: [Strategy]
+
+Risk Assessment:
+- [Risk 1]
+- [Risk 2]
+
+DID YOU KNOW?:
+- [Relevant fact 1]
+- [Relevant fact 2]
+
+Information to analyze: ${text}`;
+
+    const result = await model.generateContent(enhancedText);
     const response = await result.response;
     const analysis = response.text();
 
@@ -210,9 +333,8 @@ export async function analyzeText(
       throw new Error('Empty response from Gemini API');
     }
 
-    return {
-      analysis: cleanAnalysisText(analysis.trim()),
-    };
+    const cleanedAnalysis = cleanAnalysisText(analysis.trim());
+    return parseAnalysisResult(cleanedAnalysis);
 
   } catch (error) {
     console.error('Gemini text analysis error:', error);
@@ -248,5 +370,33 @@ export async function analyzeContent(
   } catch (error) {
     console.error(`Failed to analyze ${type}:`, error);
     throw error;
+  }
+}
+
+// Additional function to get personalized farming advice based on location and crop type
+export async function getPersonalizedAdvice(
+  cropType: string,
+  location: string,
+  soilData?: string,
+  weatherPatterns?: string
+): Promise<GeminiAnalysisResult> {
+  try {
+    const query = `Provide personalized farming advice for ${cropType} in ${location}. 
+    ${soilData ? `Soil data: ${soilData}.` : ''}
+    ${weatherPatterns ? `Weather patterns: ${weatherPatterns}.` : ''}
+    
+    Include:
+    1. Optimal planting and harvesting times
+    2. Irrigation schedule recommendations
+    3. Nutrient management strategy
+    4. Pest and disease prevention
+    5. Crop rotation suggestions (if applicable)
+    6. Risk assessment for this region and crop type
+    7. 2-3 interesting facts about this crop`;
+
+    return await analyzeText(query);
+  } catch (error) {
+    console.error('Failed to get personalized advice:', error);
+    throw new Error('Failed to generate personalized farming advice');
   }
 }
