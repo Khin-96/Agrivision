@@ -149,35 +149,56 @@ export default function SellPage() {
     try {
       const imageUrls: string[] = [];
 
-      for (const image of images) {
-        const form = new FormData();
-        form.append('file', image);
-        form.append('upload_preset', 'farmers_market');
+      // If editing and no new images, use existing images
+      if (editingProductId && images.length === 0) {
+        imageUrls.push(...imagePreviews);
+      } else {
+        // Upload new images to Cloudinary
+        for (const image of images) {
+          const form = new FormData();
+          form.append('file', image);
+          form.append('upload_preset', 'ml_default');
 
-        const uploadResponse = await fetch(`https://api.cloudinary.com/v1_1/YOUR_CLOUD_NAME/image/upload`, {
-          method: 'POST',
-          body: form,
-        });
+          console.log('Uploading image to Cloudinary...');
+          console.log('Cloudinary Cloud Name:', process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME);
+          
+          const uploadResponse = await fetch(
+            `https://api.cloudinary.com/v1_1/${process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME}/image/upload`, 
+            {
+              method: 'POST',
+              body: form,
+            }
+          );
 
-        if (!uploadResponse.ok) throw new Error('Image upload failed');
+          console.log('Cloudinary response status:', uploadResponse.status);
+          
+          if (!uploadResponse.ok) {
+            const errorText = await uploadResponse.text();
+            console.error('Cloudinary upload failed:', errorText);
+            throw new Error(`Image upload failed: ${uploadResponse.status} ${uploadResponse.statusText}`);
+          }
 
-        const data = await uploadResponse.json();
-        imageUrls.push(data.secure_url);
+          const data = await uploadResponse.json();
+          console.log('Image uploaded successfully:', data.secure_url);
+          imageUrls.push(data.secure_url);
+        }
       }
 
       let response;
       if (editingProductId) {
         // Update existing product
-        response = await fetch(`/api/products/${editingProductId}`, {
+        response = await fetch(`/api/products`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            ...formData,
+            id: editingProductId,
+            name: formData.name,
+            description: formData.description,
+            price: formData.price,
+            category: formData.category,
+            quantity: formData.quantity,
+            unit: formData.unit,
             images: imageUrls,
-            sellerId: user.id,
-            sellerName: user.name,
-            farmerId: user.id,
-            farmerName: user.name,
             available: formData.status === 'Available'
           }),
         });
@@ -187,10 +208,13 @@ export default function SellPage() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            ...formData,
+            name: formData.name,
+            description: formData.description,
+            price: formData.price,
+            category: formData.category,
+            quantity: formData.quantity,
+            unit: formData.unit,
             images: imageUrls,
-            sellerId: user.id,
-            sellerName: user.name,
             farmerId: user.id,
             farmerName: user.name,
             available: formData.status === 'Available',
@@ -200,7 +224,12 @@ export default function SellPage() {
         });
       }
 
-      if (!response.ok) throw new Error('Failed to save product');
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Failed to save product:', errorText);
+        throw new Error(`Failed to save product: ${response.status} ${response.statusText}`);
+      }
+
       const savedProduct = await response.json();
 
       // Update product list dynamically
@@ -213,9 +242,9 @@ export default function SellPage() {
 
       toast.success(editingProductId ? 'Product updated!' : 'Product listed!');
       resetForm();
-    } catch (error) {
-      console.error(error);
-      toast.error('Failed to list product');
+    } catch (error: any) {
+      console.error('Error in handleSubmit:', error);
+      toast.error(error.message || 'Failed to list product');
     } finally {
       setLoading(false);
       setUploading(false);
@@ -241,13 +270,17 @@ export default function SellPage() {
   const handleDelete = async (id: string) => {
     if (!confirm('Are you sure you want to delete this product?')) return;
     try {
-      const res = await fetch(`/api/products/${id}`, { method: 'DELETE' });
-      if (!res.ok) throw new Error('Delete failed');
+      const res = await fetch(`/api/products?id=${id}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const errorText = await res.text();
+        console.error('Delete failed:', errorText);
+        throw new Error('Delete failed');
+      }
       setUserProducts(prev => prev.filter(p => p.id !== id));
       toast.success('Product deleted!');
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      toast.error('Failed to delete product');
+      toast.error(err.message || 'Failed to delete product');
     }
   };
 
@@ -308,45 +341,60 @@ export default function SellPage() {
             {/* Product Name */}
             <div>
               <label className="text-gray-700 block mb-2 font-medium">Product Name</label>
-              <input type="text" name="name" value={formData.name} onChange={handleInputChange} placeholder="Enter product name"
+              <input type="text" name="name" value={formData.name} onChange={handleInputChange} placeholder="Enter product name" required
                 className="w-full p-3 rounded-lg border border-gray-300 bg-gray-100 text-gray-900 focus:outline-none focus:ring-2 focus:ring-green-500"/>
             </div>
 
             {/* Description */}
             <div>
               <label className="text-gray-700 block mb-2 font-medium">Description</label>
-              <textarea name="description" value={formData.description} onChange={handleInputChange} rows={4} placeholder="Describe your product"
+              <textarea name="description" value={formData.description} onChange={handleInputChange} rows={4} placeholder="Describe your product" required
                 className="w-full p-3 rounded-lg border border-gray-300 bg-gray-100 text-gray-900 focus:outline-none focus:ring-2 focus:ring-green-500"/>
             </div>
 
             {/* Price, Quantity, Unit, Category, Status */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <input type="number" name="price" value={formData.price} onChange={handleInputChange} placeholder="Price" min={0}
-                className="w-full p-3 rounded-lg border border-gray-300 bg-gray-100 text-gray-900 focus:outline-none focus:ring-2 focus:ring-green-500"/>
-              <input type="number" name="quantity" value={formData.quantity} onChange={handleInputChange} placeholder="Quantity" min={0}
-                className="w-full p-3 rounded-lg border border-gray-300 bg-gray-100 text-gray-900 focus:outline-none focus:ring-2 focus:ring-green-500"/>
-              <input type="text" name="unit" value={formData.unit} onChange={handleInputChange} placeholder="Unit (kg, piece)"
-                className="w-full p-3 rounded-lg border border-gray-300 bg-gray-100 text-gray-900 focus:outline-none focus:ring-2 focus:ring-green-500"/>
-              <select name="category" value={formData.category} onChange={handleInputChange}
-                className="w-full p-3 rounded-lg border border-gray-300 bg-gray-100 text-gray-900 focus:outline-none focus:ring-2 focus:ring-green-500">
-                <option value="">Select Category</option>
-                <option value="vegetables">Vegetables</option>
-                <option value="fruits">Fruits</option>
-                <option value="dairy">Dairy</option>
-                <option value="grains">Grains</option>
-                <option value="herbs">Herbs</option>
-                <option value="meat">Meat</option>
-                <option value="condiments">Condiments</option>
-              </select>
-              <select name="status" value={formData.status} onChange={handleInputChange}
-                className="w-full p-3 rounded-lg border border-gray-300 bg-gray-100 text-gray-900 focus:outline-none focus:ring-2 focus:ring-green-500">
-                <option value="Available">Available</option>
-                <option value="Out of Stock">Out of Stock</option>
-                <option value="Restocked">Restocked</option>
-                <option value="Limited">Limited</option>
-                <option value="Coming Soon">Coming Soon</option>
-                <option value="Discontinued">Discontinued</option>
-              </select>
+              <div>
+                <label className="text-gray-700 block mb-2 font-medium">Price</label>
+                <input type="number" name="price" value={formData.price} onChange={handleInputChange} placeholder="Price" min={0} step="0.01" required
+                  className="w-full p-3 rounded-lg border border-gray-300 bg-gray-100 text-gray-900 focus:outline-none focus:ring-2 focus:ring-green-500"/>
+              </div>
+              <div>
+                <label className="text-gray-700 block mb-2 font-medium">Quantity</label>
+                <input type="number" name="quantity" value={formData.quantity} onChange={handleInputChange} placeholder="Quantity" min={0} required
+                  className="w-full p-3 rounded-lg border border-gray-300 bg-gray-100 text-gray-900 focus:outline-none focus:ring-2 focus:ring-green-500"/>
+              </div>
+              <div>
+                <label className="text-gray-700 block mb-2 font-medium">Unit</label>
+                <input type="text" name="unit" value={formData.unit} onChange={handleInputChange} placeholder="Unit (kg, piece)" required
+                  className="w-full p-3 rounded-lg border border-gray-300 bg-gray-100 text-gray-900 focus:outline-none focus:ring-2 focus:ring-green-500"/>
+              </div>
+              <div>
+                <label className="text-gray-700 block mb-2 font-medium">Category</label>
+                <select name="category" value={formData.category} onChange={handleInputChange} required
+                  className="w-full p-3 rounded-lg border border-gray-300 bg-gray-100 text-gray-900 focus:outline-none focus:ring-2 focus:ring-green-500">
+                  <option value="">Select Category</option>
+                  <option value="vegetables">Vegetables</option>
+                  <option value="fruits">Fruits</option>
+                  <option value="dairy">Dairy</option>
+                  <option value="grains">Grains</option>
+                  <option value="herbs">Herbs</option>
+                  <option value="meat">Meat</option>
+                  <option value="condiments">Condiments</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-gray-700 block mb-2 font-medium">Status</label>
+                <select name="status" value={formData.status} onChange={handleInputChange} required
+                  className="w-full p-3 rounded-lg border border-gray-300 bg-gray-100 text-gray-900 focus:outline-none focus:ring-2 focus:ring-green-500">
+                  <option value="Available">Available</option>
+                  <option value="Out of Stock">Out of Stock</option>
+                  <option value="Restocked">Restocked</option>
+                  <option value="Limited">Limited</option>
+                  <option value="Coming Soon">Coming Soon</option>
+                  <option value="Discontinued">Discontinued</option>
+                </select>
+              </div>
             </div>
 
             {/* Images */}
@@ -379,7 +427,7 @@ export default function SellPage() {
             <div className="flex justify-between pt-6">
               <button type="button" onClick={resetForm} className="px-6 py-3 text-gray-600 hover:text-gray-900">Cancel</button>
               <button type="submit" disabled={loading || uploading || !user.idVerified} 
-                className="px-8 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg flex items-center gap-2">
+                className="px-8 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg flex items-center gap-2 disabled:bg-gray-400 disabled:cursor-not-allowed">
                 {uploading ? 'Uploading...' : loading ? 'Saving...' : editingProductId ? 'Update Product' : 'List Product'}
               </button>
             </div>
