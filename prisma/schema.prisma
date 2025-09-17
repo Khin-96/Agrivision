@@ -72,17 +72,17 @@ model VerificationToken {
 model Product {
   id          String   @id @default(cuid())
   name        String
-  description String
+  description String?
   price       Float
   category    String
-  quantity    Float
+  quantity    Int
   unit        String
-  images      Json     // ✅ use JSON for multiple images
+  images      Json
   available   Boolean  @default(true)
+  farmerId    String
+  farmer      User     @relation(fields: [farmerId], references: [id])
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
-
-  // ✅ relation to User (farmer)
-  farmerId String
-  farmer   User @relation(fields: [farmerId], references: [id], onDelete: Cascade)
+  rating      Float    @default(0)
+  reviews     Int      @default(0)
 }

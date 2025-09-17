@@ -9,10 +9,13 @@ import bcrypt from 'bcryptjs';
 export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(prisma),
   providers: [
+    // --- Google OAuth provider ---
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID!,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
     }),
+
+    // --- Email + Password credentials provider ---
     CredentialsProvider({
       name: "credentials",
       credentials: {
@@ -25,16 +28,15 @@ export const authOptions: NextAuthOptions = {
         const user = await prisma.user.findUnique({
           where: { email: credentials.email },
         });
-
         if (!user || !user.password) return null;
 
         const isPasswordValid = await bcrypt.compare(
           credentials.password,
           user.password
         );
-
         if (!isPasswordValid) return null;
 
+        // ✅ return only safe fields
         return {
           id: user.id,
           email: user.email,
@@ -49,12 +51,18 @@ export const authOptions: NextAuthOptions = {
       },
     }),
   ],
+
   callbacks: {
+    /**
+     * signIn callback: ensures a User exists in Prisma
+     */
     async signIn({ user, account }) {
       if (account?.provider === "google") {
         try {
-          // Get role from callback URL or default to buyer
+          // Default role
           let selectedRole: "buyer" | "farmer" = "buyer";
+
+          // Try extracting ?role=farmer from callbackUrl
           if (account.callbackUrl) {
             try {
               const url = new URL(account.callbackUrl);
@@ -67,6 +75,7 @@ export const authOptions: NextAuthOptions = {
             }
           }
 
+          // Ensure Prisma user exists
           const existingUser = await prisma.user.findUnique({
             where: { email: user.email! },
           });
@@ -80,15 +89,13 @@ export const authOptions: NextAuthOptions = {
                 idVerified: false,
                 authProvider: "google",
                 image: user.image || null,
-                emailVerified: null,
-                password: null,
               },
             });
           }
 
           return true;
         } catch (error) {
-          console.error("Google sign-in error:", error);
+          console.error("❌ Google sign-in error:", error);
           return false;
         }
       }
@@ -96,39 +103,71 @@ export const authOptions: NextAuthOptions = {
       return true; // Allow credentials login
     },
 
+    /**
+     * jwt callback: attach Prisma user.id (not providerAccountId!)
+     */
     async jwt({ token, user }) {
-      if (user) {
-        token.id = user.id;
-        token.role = user.role;
-        token.idVerified = user.idVerified;
-        token.image = user.image;
-        token.idFrontUrl = user.idFrontUrl;
-        token.idBackUrl = user.idBackUrl;
-        token.idType = user.idType;
+      try {
+        if (user) {
+          // When user signs in for the first time
+          token.id = user.id;
+          token.role = user.role;
+          token.idVerified = user.idVerified;
+          token.image = user.image;
+          token.idFrontUrl = user.idFrontUrl;
+          token.idBackUrl = user.idBackUrl;
+          token.idType = user.idType;
+        } else if (token.email) {
+          // On subsequent requests, fetch Prisma user by email
+          const dbUser = await prisma.user.findUnique({
+            where: { email: token.email as string },
+          });
+
+          if (dbUser) {
+            token.id = dbUser.id; // ✅ always ensure Prisma cuid is used
+            token.role = dbUser.role;
+            token.idVerified = dbUser.idVerified;
+            token.image = dbUser.image;
+            token.idFrontUrl = dbUser.idFrontUrl;
+            token.idBackUrl = dbUser.idBackUrl;
+            token.idType = dbUser.idType;
+          }
+        }
+      } catch (err) {
+        console.error("❌ JWT callback error:", err);
       }
+
       return token;
     },
 
+    /**
+     * session callback: expose fields to client session
+     */
     async session({ session, token }) {
-      if (token) {
-        session.user.id = token.id as string;
-        session.user.role = token.role as "farmer" | "buyer";
-        session.user.idVerified = token.idVerified as boolean;
-        session.user.image = token.image as string | null;
-        session.user.idFrontUrl = token.idFrontUrl as string | null;
-        session.user.idBackUrl = token.idBackUrl as string | null;
-        session.user.idType = token.idType as string | null;
+      try {
+        if (token && session.user) {
+          session.user.id = token.id as string;
+          session.user.role = token.role as "farmer" | "buyer";
+          session.user.idVerified = token.idVerified as boolean;
+          session.user.image = token.image as string | null;
+          session.user.idFrontUrl = token.idFrontUrl as string | null;
+          session.user.idBackUrl = token.idBackUrl as string | null;
+          session.user.idType = token.idType as string | null;
+        }
+      } catch (err) {
+        console.error("❌ Session callback error:", err);
       }
+
       return session;
     },
 
+    /**
+     * redirect callback: normalize URLs
+     */
     async redirect({ url, baseUrl }) {
-      // Handle redirects properly
       if (url.startsWith("/")) return `${baseUrl}${url}`;
       else if (new URL(url).origin === baseUrl) return url;
-      
-      // Default redirect to market page
-      return `${baseUrl}/market`;
+      return `${baseUrl}/market`; // default
     },
   },
 
@@ -138,7 +177,7 @@ export const authOptions: NextAuthOptions = {
   },
 
   session: {
-    strategy: "jwt" as const,
+    strategy: "jwt",
     maxAge: 30 * 24 * 60 * 60, // 30 days
   },
 };

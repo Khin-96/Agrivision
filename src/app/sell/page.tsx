@@ -215,8 +215,8 @@ export default function SellPage() {
             quantity: formData.quantity,
             unit: formData.unit,
             images: imageUrls,
-            farmerId: user.id,
-            farmerName: user.name,
+            //farmerId: user.id,
+            //farmerName: user.name,
             available: formData.status === 'Available',
             rating: 0,
             reviews: 0
