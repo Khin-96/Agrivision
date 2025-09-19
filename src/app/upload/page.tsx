@@ -1,9 +1,12 @@
+//app/upload/page.tsx - Main upload and analysis page with Sentinel Hub integration
+
 'use client';
 import Layout from '@/components/layout/Layout';
 import React, { useState } from 'react';
 import Vision from './components/Vision';
 import Download from './components/Download';
 import Upload from './components/FileUpload';
+import FarmMaps from './components/FarmMaps'; 
 
 export default function Home() {
   // State management
@@ -15,10 +18,7 @@ export default function Home() {
   const handleFileUpload = async (file: File, type: 'image' | 'video') => {
     console.log('Starting file upload:', file.name, 'Type:', type);
     
-    // Upload logic here
     setUploadProgress({ progress: 0, status: 'uploading' });
-    
-    // Simulate upload progress
     const interval = setInterval(() => {
       setUploadProgress(prev => {
         const newProgress = Math.min(prev.progress + 10, 90);
@@ -27,16 +27,11 @@ export default function Home() {
     }, 200);
 
     try {
-      // Your upload logic here
       await new Promise(resolve => setTimeout(resolve, 2000));
-      
       clearInterval(interval);
       setUploadProgress({ progress: 100, status: 'analyzing' });
-      
-      // Simulate analysis
       await new Promise(resolve => setTimeout(resolve, 3000));
       
-      // Add mock analysis result
       const newResult = {
         type,
         filename: file.name,
@@ -64,36 +59,21 @@ export default function Home() {
 
   // Toggle language
   const toggleLanguage = () => {
-    console.log('Toggling language from', language, 'to', language === 'english' ? 'swahili' : 'english');
     setLanguage(prev => prev === 'english' ? 'swahili' : 'english');
   };
 
   // Download handlers
-  const handleDownloadAnalysis = (result: any) => {
-    console.log('Downloading analysis as text:', result.filename);
-    // Your download logic here
-  };
-
-  const handleDownloadAnalysisAsPDF = (result: any) => {
-    console.log('Downloading analysis as PDF:', result.filename);
-    // Your PDF download logic here
-  };
-
-  const handleDownloadAllAnalyses = () => {
-    console.log('Downloading all analyses as text');
-    // Your download all logic here
-  };
-
-  const handleDownloadAllAnalysesAsPDF = () => {
-    console.log('Downloading all analyses as PDF');
-    // Your PDF download all logic here
-  };
+  const handleDownloadAnalysis = (result: any) => console.log('Downloading analysis as text:', result.filename);
+  const handleDownloadAnalysisAsPDF = (result: any) => console.log('Downloading analysis as PDF:', result.filename);
+  const handleDownloadAllAnalyses = () => console.log('Downloading all analyses as text');
+  const handleDownloadAllAnalysesAsPDF = () => console.log('Downloading all analyses as PDF');
 
   return (
     <Layout>
       <div className="min-h-screen bg-green-50 p-4 pt-24">
         <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Left Column - Upload and Download */}
+          
+          {/* Left Column - Upload, Download, Sentinel */}
           <div className="space-y-6">
             <Upload 
               onFileUpload={handleFileUpload} 
@@ -106,6 +86,10 @@ export default function Home() {
               onDownloadAllAnalyses={handleDownloadAllAnalyses}
               onDownloadAllAnalysesAsPDF={handleDownloadAllAnalysesAsPDF}
             />
+            <div className="bg-white rounded-xl shadow p-4">
+              <h2 className="text-lg font-semibold mb-2">Satellite Insights 🌍</h2>
+              <FarmMaps /> {/*Sentinel section */}
+            </div>
           </div>
           
           {/* Right Column - Vision Chatbot */}
