@@ -12,6 +12,7 @@ const navigation = [
   { name: 'History', href: '/history' },
   { name: 'Market', href: '/market' },
   { name: 'About', href: '/about' },
+  { name: 'Monitor Farm', href: '/Monitor-Farm' },
 ];
 
 export default function Header() {

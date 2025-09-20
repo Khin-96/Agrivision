@@ -6,7 +6,7 @@ import { AuthProvider } from '@/contexts/AuthContext';
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: 'AgriVision - Plant Disease Detection',
+  title: 'AgriVision - Your Shama Smarter',
   description: 'Identify plants and diagnose diseases using machine learning and uploaded images',
 };
 
