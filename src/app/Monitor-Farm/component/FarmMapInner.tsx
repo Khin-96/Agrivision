@@ -15,8 +15,10 @@ const Polygon = dynamic(() => import("react-leaflet").then(mod => mod.Polygon), 
 const Popup = dynamic(() => import("react-leaflet").then(mod => mod.Popup), { ssr: false });
 const Marker = dynamic(() => import("react-leaflet").then(mod => mod.Marker), { ssr: false });
 const FeatureGroup = dynamic(() => import("react-leaflet").then(mod => mod.FeatureGroup), { ssr: false });
-const useMap = dynamic(() => import("react-leaflet").then(mod => mod.useMap), { ssr: false });
 const EditControl = dynamic(() => import("react-leaflet-draw").then(mod => mod.EditControl), { ssr: false });
+
+// Import useMap directly instead of dynamically
+import { useMap } from "react-leaflet";
 
 // Custom marker icon
 const customIcon = new L.Icon({
@@ -49,12 +51,16 @@ interface FarmMapInnerProps {
   center?: [number, number];
 }
 
-// MapPanTo component
+// MapPanTo component - Only render when map is available
 const MapPanTo = ({ coords }: { coords: [number, number] }) => {
   const map = useMap();
+  
   useEffect(() => {
-    map.flyTo(coords, 16, { duration: 1.5 });
+    if (map && map.flyTo) {
+      map.flyTo(coords, 16, { duration: 1.5 });
+    }
   }, [coords, map]);
+  
   return null;
 };
 
