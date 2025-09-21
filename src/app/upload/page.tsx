@@ -1,182 +1,361 @@
-// app/upload/page.tsx - Main upload and analysis page
-
+// src/app/upload/page.tsx
 'use client';
-import Layout from '@/components/layout/Layout';
+
 import React, { useState } from 'react';
-import Vision from './components/Vision';
-import Download from './components/Download';
+import { Toaster } from 'react-hot-toast'; 
 import FileUpload from './components/FileUpload';
-import Toast from './components/Toast';
+import Vision from './components/Vision';
 import { AnalysisResponse } from '@/lib/api';
+import Layout from '@/components/layout/Layout';
+
+interface PageState {
+  currentAnalysis: AnalysisResponse | null;
+  visionContext: string;
+  showVision: boolean;
+  language: 'english' | 'swahili';
+}
 
 export default function UploadPage() {
-  // State management
-  const [analysisResults, setAnalysisResults] = useState<any[]>([]);
-  const [language, setLanguage] = useState<'english' | 'swahili'>('english');
-  const [isVisionOpen, setIsVisionOpen] = useState(true);
-  const [toast, setToast] = useState<{message: string, type: 'success' | 'error'} | null>(null);
+  const [pageState, setPageState] = useState<PageState>({
+    currentAnalysis: null,
+    visionContext: '',
+    showVision: true,
+    language: 'english'
+  });
 
-  // Show toast message
-  const showToast = (message: string, type: 'success' | 'error') => {
-    setToast({ message, type });
-    setTimeout(() => setToast(null), 3000);
-  };
-
-  // Handle analysis complete
+  /**
+   * Handles when Gemini analysis is complete
+   * Updates the current analysis and prepares Vision context
+   */
   const handleAnalysisComplete = (result: AnalysisResponse) => {
-    if (result.success) {
-      const newResult = {
-        type: result.type,
-        filename: result.filename || 'Uploaded file',
-        analysis: result.analysis,
-        timestamp: new Date().toISOString(),
-      };
-      
-      setAnalysisResults(prev => [newResult, ...prev]);
-      showToast(
-        language === 'swahili' ? 'Uchambuzi umekamilika!' : 'Analysis completed!',
-        'success'
-      );
-    } else {
-      showToast(
-        language === 'swahili' 
-          ? 'Uchambuzi umeshindwa. Tafadhali jaribu tena.' 
-          : 'Analysis failed. Please try again.',
-        'error'
-      );
-    }
+    console.log('Analysis completed:', {
+      success: result.success,
+      filename: result.filename,
+      type: result.type,
+      categoriesCount: result.categories?.length || 0
+    });
+
+    setPageState(prev => ({
+      ...prev,
+      currentAnalysis: result,
+      showVision: true // Ensure Vision is visible after analysis
+    }));
   };
 
-  // Toggle language
+  /**
+   * Handles Vision context updates from FileUpload
+   * This is called when new analysis results are ready
+   */
+  const handleVisionContextUpdate = (context: string) => {
+    console.log('Updating Vision context:', {
+      contextLength: context.length,
+      timestamp: new Date().toISOString()
+    });
+
+    setPageState(prev => ({
+      ...prev,
+      visionContext: context
+    }));
+  };
+
+  /**
+   * Toggles language between English and Swahili
+   */
   const toggleLanguage = () => {
-    setLanguage(prev => prev === 'english' ? 'swahili' : 'english');
+    setPageState(prev => {
+      const newLanguage = prev.language === 'english' ? 'swahili' : 'english';
+      console.log('Language toggled to:', newLanguage);
+      return {
+        ...prev,
+        language: newLanguage
+      };
+    });
   };
 
-  // Toggle vision widget
+  /**
+   * Toggles Vision AI visibility
+   */
   const toggleVision = () => {
-    setIsVisionOpen(prev => !prev);
+    setPageState(prev => ({
+      ...prev,
+      showVision: !prev.showVision
+    }));
   };
 
-  // Download handlers
-  const handleDownloadAnalysis = (result: any) => {
-    console.log('Downloading analysis as text:', result.filename);
-    showToast(
-      language === 'swahili' ? 'Inapakua uchambuzi...' : 'Downloading analysis...',
-      'success'
-    );
-  };
-
-  const handleDownloadAnalysisAsPDF = (result: any) => {
-    console.log('Downloading analysis as PDF:', result.filename);
-    showToast(
-      language === 'swahili' ? 'Inapakua PDF...' : 'Downloading PDF...',
-      'success'
-    );
-  };
-
-  const handleDownloadAllAnalyses = () => {
-    console.log('Downloading all analyses as text');
-    showToast(
-      language === 'swahili' ? 'Inapakua uchambuzi wote...' : 'Downloading all analyses...',
-      'success'
-    );
-  };
-
-  const handleDownloadAllAnalysesAsPDF = () => {
-    console.log('Downloading all analyses as PDF');
-    showToast(
-      language === 'swahili' ? 'Inapakua PDF za uchambuzi wote...' : 'Downloading all analyses as PDF...',
-      'success'
-    );
+  /**
+   * Additional context update handler for Vision component
+   */
+  const handleContextUpdate = (context: string) => {
+    console.log('Vision context updated internally:', context.length);
+    // This can be used for additional logging or state management
   };
 
   return (
-    <Layout>
-      <div className="min-h-screen bg-white p-4 pt-24">
-        {toast && (
-          <Toast 
-            message={toast.message} 
-            type={toast.type} 
-            onClose={() => setToast(null)} 
+    <div className="min-h-screen bg-gradient-to-br from-green-50 to-blue-50">
+      {/* Toast notifications container */}
+      <Toaster 
+        position="top-right"
+        toastOptions={{
+          duration: 4000,
+          style: {
+            background: '#10b981',
+            color: '#ffffff',
+          },
+          success: {
+            style: {
+              background: '#10b981',
+            },
+          },
+          error: {
+            style: {
+              background: '#ef4444',
+            },
+          },
+        }}
+      />
+      
+      {/* Header */}
+      <div className="container mx-auto px-4 py-8">
+        <div className="text-center mb-8">
+          <h1 className="text-4xl font-bold text-green-800 mb-4">
+            {pageState.language === 'swahili' 
+              ? 'Upakiaji na Uchambuzi wa Mazao' 
+              : 'Farm Content Upload & Analysis'}
+          </h1>
+          <p className="text-lg text-green-600 max-w-2xl mx-auto">
+            {pageState.language === 'swahili'
+              ? 'Pakia picha au video za mazao yako kupata uchambuzi wa kina na ushauri wa kitaalamu kutoka kwa Vision AI'
+              : 'Upload your farm images or videos for detailed AI analysis and expert advice from Vision AI'}
+          </p>
+        </div>
+
+        {/* Language Toggle Button */}
+        <div className="text-center mb-6">
+          <button
+            onClick={toggleLanguage}
+            className="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-full font-medium transition-colors"
+          >
+            {pageState.language === 'english' ? 'Switch to Kiswahili' : 'Switch to English'}
+          </button>
+        </div>
+
+        {/* Main Content */}
+        <div className="max-w-4xl mx-auto">
+          <FileUpload 
+            onAnalysisComplete={handleAnalysisComplete}
+            onVisionContextUpdate={handleVisionContextUpdate}
           />
-        )}
-        
-        <div className="max-w-6xl mx-auto">
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            
-            {/* Main Content - Upload and Results */}
-            <div className="lg:col-span-2 space-y-6">
-              <div className="bg-white rounded-xl shadow-sm border p-6">
-                <h1 className="text-2xl font-semibold text-gray-800 mb-2">
-                  {language === 'swahili' ? 'Uchambuzi wa Mazao' : 'Crop Analysis'}
-                </h1>
-                <p className="text-gray-600 mb-6">
-                  {language === 'swahili' 
-                    ? 'Pakia picha au video ya shamba lako kuchambuliwa na AI' 
-                    : 'Upload images or videos of your farm for AI analysis'}
-                </p>
-                
-                <FileUpload onAnalysisComplete={handleAnalysisComplete} />
-              </div>
+
+          {/* Analysis Results Summary */}
+          {pageState.currentAnalysis && pageState.currentAnalysis.success && (
+            <div className="mt-8 bg-white rounded-xl shadow-lg p-6">
+              <h3 className="text-lg font-semibold text-green-800 mb-4">
+                {pageState.language === 'swahili' ? 'Muhtasari wa Uchambuzi' : 'Analysis Summary'}
+              </h3>
               
-              {analysisResults.length > 0 && (
-                <div className="bg-white rounded-xl shadow-sm border p-6">
-                  <h2 className="text-xl font-semibold text-gray-800 mb-4">
-                    {language === 'swahili' ? 'Matokeo ya Uchambuzi' : 'Analysis Results'}
-                  </h2>
-                  
-                  <Download 
-                    analysisResults={analysisResults}
-                    onDownloadAnalysis={handleDownloadAnalysis}
-                    onDownloadAnalysisAsPDF={handleDownloadAnalysisAsPDF}
-                    onDownloadAllAnalyses={handleDownloadAllAnalyses}
-                    onDownloadAllAnalysesAsPDF={handleDownloadAllAnalysesAsPDF}
-                  />
-                  
-                  <div className="mt-6 space-y-4">
-                    {analysisResults.map((result, index) => (
-                      <div key={index} className="border rounded-lg p-4">
-                        <div className="flex justify-between items-start mb-2">
-                          <h3 className="font-medium text-gray-800">{result.filename}</h3>
-                          <span className="text-xs text-gray-500">
-                            {new Date(result.timestamp).toLocaleString()}
-                          </span>
-                        </div>
-                        <p className="text-gray-700 text-sm">{result.analysis}</p>
-                      </div>
-                    ))}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+                {pageState.currentAnalysis.categories && (
+                  <div className="bg-blue-50 p-4 rounded-lg">
+                    <h4 className="font-medium text-blue-800 mb-2">
+                      {pageState.language === 'swahili' ? 'Aina' : 'Categories'}
+                    </h4>
+                    <p className="text-sm text-blue-600">
+                      {pageState.currentAnalysis.categories.join(', ')}
+                    </p>
                   </div>
+                )}
+                
+                {pageState.currentAnalysis.suggestions && (
+                  <div className="bg-yellow-50 p-4 rounded-lg">
+                    <h4 className="font-medium text-yellow-800 mb-2">
+                      {pageState.language === 'swahili' ? 'Mapendekezo' : 'Recommendations'}
+                    </h4>
+                    <p className="text-sm text-yellow-600">
+                      {pageState.currentAnalysis.suggestions.length} {
+                        pageState.language === 'swahili' ? 'yamepatikana' : 'found'
+                      }
+                    </p>
+                  </div>
+                )}
+                
+                {pageState.currentAnalysis.risks && (
+                  <div className="bg-red-50 p-4 rounded-lg">
+                    <h4 className="font-medium text-red-800 mb-2">
+                      {pageState.language === 'swahili' ? 'Hatari' : 'Risks'}
+                    </h4>
+                    <p className="text-sm text-red-600">
+                      {pageState.currentAnalysis.risks.length} {
+                        pageState.language === 'swahili' ? 'zimegunduliwa' : 'identified'
+                      }
+                    </p>
+                  </div>
+                )}
+                
+                {pageState.currentAnalysis.didYouKnow && (
+                  <div className="bg-purple-50 p-4 rounded-lg">
+                    <h4 className="font-medium text-purple-800 mb-2">
+                      {pageState.language === 'swahili' ? 'Mambo ya Kujua' : 'Did You Know'}
+                    </h4>
+                    <p className="text-sm text-purple-600">
+                      {pageState.currentAnalysis.didYouKnow.length} {
+                        pageState.language === 'swahili' ? 'ukweli' : 'facts'
+                      }
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* Analysis Text Preview */}
+              {pageState.currentAnalysis.analysis && (
+                <div className="bg-gray-50 p-4 rounded-lg">
+                  <h4 className="font-medium text-gray-800 mb-2">
+                    {pageState.language === 'swahili' ? 'Uchambuzi Mkuu' : 'Main Analysis'}
+                  </h4>
+                  <p className="text-sm text-gray-600 line-clamp-3">
+                    {pageState.currentAnalysis.analysis.substring(0, 200)}...
+                  </p>
+                  <p className="text-xs text-green-600 mt-2 font-medium">
+                    💬 {pageState.language === 'swahili' 
+                      ? 'Uliza Vision maswali zaidi kuhusu uchambuzi huu!'
+                      : 'Ask Vision more questions about this analysis!'}
+                  </p>
                 </div>
               )}
             </div>
-            
-            {/* Sidebar - Optional content can go here */}
-            <div className="lg:col-span-1">
-              {/* You can add additional content here if needed */}
+          )}
+
+          {/* Vision AI Toggle Button (when hidden) */}
+          {!pageState.showVision && (
+            <div className="mt-6 text-center">
+              <button
+                onClick={toggleVision}
+                className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg font-medium transition-colors shadow-lg"
+              >
+                {pageState.language === 'swahili' ? 'Onyesha Vision AI' : 'Show Vision AI'}
+              </button>
+            </div>
+          )}
+
+          {/* Instructions */}
+          <div className="mt-8 bg-white rounded-xl shadow-lg p-6">
+            <h3 className="text-lg font-semibold text-green-800 mb-4">
+              {pageState.language === 'swahili' ? 'Jinsi ya Kutumia' : 'How to Use'}
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <h4 className="font-medium text-green-700 mb-2">
+                  {pageState.language === 'swahili' ? '1. Pakia Picha au Video' : '1. Upload Image or Video'}
+                </h4>
+                <p className="text-sm text-gray-600">
+                  {pageState.language === 'swahili' 
+                    ? 'Chagua picha au video ya mazao, mifugo, au shughuli za kilimo'
+                    : 'Select an image or video of your crops, livestock, or farming activities'}
+                </p>
+              </div>
+              <div>
+                <h4 className="font-medium text-green-700 mb-2">
+                  {pageState.language === 'swahili' ? '2. Subiri Uchambuzi' : '2. Wait for Analysis'}
+                </h4>
+                <p className="text-sm text-gray-600">
+                  {pageState.language === 'swahili'
+                    ? 'AI itachambua yaliyomo na kutoa mapendekezo ya kitaalamu'
+                    : 'AI will analyze the content and provide expert recommendations'}
+                </p>
+              </div>
+              <div>
+                <h4 className="font-medium text-green-700 mb-2">
+                  {pageState.language === 'swahili' ? '3. Zungumza na Vision' : '3. Chat with Vision'}
+                </h4>
+                <p className="text-sm text-gray-600">
+                  {pageState.language === 'swahili'
+                    ? 'Uliza maswali yoyote kuhusu matokeo ya uchambuzi'
+                    : 'Ask any questions about your analysis results'}
+                </p>
+              </div>
+              <div>
+                <h4 className="font-medium text-green-700 mb-2">
+                  {pageState.language === 'swahili' ? '4. Tekeleza Ushauri' : '4. Implement Advice'}
+                </h4>
+                <p className="text-sm text-gray-600">
+                  {pageState.language === 'swahili'
+                    ? 'Fuata mapendekezo ya Vision kuboresha mazao yako'
+                    : 'Follow Vision\'s recommendations to improve your farming'}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Features Highlight */}
+          <div className="mt-8 bg-gradient-to-r from-green-600 to-blue-600 text-white rounded-xl p-6">
+            <h3 className="text-lg font-semibold mb-4">
+              {pageState.language === 'swahili' ? 'Vipengele vya Vision AI' : 'Vision AI Features'}
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="text-center">
+                <div className="bg-white bg-opacity-20 rounded-full p-3 w-12 h-12 mx-auto mb-2 flex items-center justify-center">
+                  🧠
+                </div>
+                <h4 className="font-medium mb-1">
+                  {pageState.language === 'swahili' ? 'Uchambuzi wa Kina' : 'Deep Analysis'}
+                </h4>
+                <p className="text-sm opacity-90">
+                  {pageState.language === 'swahili'
+                    ? 'Ainisha magonjwa, wadudu na hali ya mazao'
+                    : 'Identifies diseases, pests, and crop conditions'}
+                </p>
+              </div>
+              <div className="text-center">
+                <div className="bg-white bg-opacity-20 rounded-full p-3 w-12 h-12 mx-auto mb-2 flex items-center justify-center">
+                  📅
+                </div>
+                <h4 className="font-medium mb-1">
+                  {pageState.language === 'swahili' ? 'Ratiba za Kibinafsi' : 'Personal Schedules'}
+                </h4>
+                <p className="text-sm opacity-90">
+                  {pageState.language === 'swahili'
+                    ? 'Ratiba za kupanda, kumwagilia na kuvuna'
+                    : 'Planting, irrigation, and harvest schedules'}
+                </p>
+              </div>
+              <div className="text-center">
+                <div className="bg-white bg-opacity-20 rounded-full p-3 w-12 h-12 mx-auto mb-2 flex items-center justify-center">
+                  💡
+                </div>
+                <h4 className="font-medium mb-1">
+                  {pageState.language === 'swahili' ? 'Ushauri wa Papo Hapo' : 'Real-time Advice'}
+                </h4>
+                <p className="text-sm opacity-90">
+                  {pageState.language === 'swahili'
+                    ? 'Jibu za haraka kwa maswali yako yote ya kilimo'
+                    : 'Instant answers to all your farming questions'}
+                </p>
+              </div>
             </div>
           </div>
         </div>
-        
-        {/* Vision Widget */}
-        <Vision 
-          analysisResults={analysisResults}
-          language={language}
-          onLanguageToggle={toggleLanguage}
-          isOpen={isVisionOpen}
-          onToggle={toggleVision}
-        />
-        
-        {/* Vision toggle button when closed */}
-        {!isVisionOpen && (
-          <button
-            onClick={toggleVision}
-            className="fixed bottom-4 right-4 z-40 bg-green-600 text-white p-3 rounded-full shadow-lg hover:bg-green-700 transition-colors"
-            title="Open Vision Assistant"
-          >
-            <Bot size={24} />
-          </button>
-        )}
       </div>
-    </Layout>
+
+      {/* Vision AI Component */}
+      <Vision 
+        analysisResults={pageState.currentAnalysis ? [pageState.currentAnalysis] : []}
+        language={pageState.language}
+        onLanguageToggle={toggleLanguage}
+        isOpen={pageState.showVision}
+        onToggle={toggleVision}
+        analysisContext={pageState.visionContext}
+        onContextUpdate={handleContextUpdate}
+      />
+
+      {/* Debug Information (Remove in production) */}
+      {process.env.NODE_ENV === 'development' && (
+        <div className="fixed bottom-4 left-4 bg-gray-800 text-white p-4 rounded-lg max-w-sm text-xs">
+          <h4 className="font-bold mb-2">Debug Info:</h4>
+          <p>Context Length: {pageState.visionContext.length}</p>
+          <p>Analysis: {pageState.currentAnalysis ? 'Yes' : 'No'}</p>
+          <p>Vision Open: {pageState.showVision ? 'Yes' : 'No'}</p>
+          <p>Language: {pageState.language}</p>
+        </div>
+      )}
+    </div>
   );
 }
