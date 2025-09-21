@@ -1,6 +1,9 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   experimental: { appDir: true },
+  images: {
+    domains: ['res.cloudinary.com'],
+  },
   webpack: (config) => {
     // Exclude tfjs-node and node-pre-gyp from client bundle
     config.externals = config.externals || [];
