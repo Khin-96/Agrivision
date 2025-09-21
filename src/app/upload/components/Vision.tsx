@@ -2,7 +2,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Loader2, AlertCircle, Bot, Globe, X, Minimize2, Maximize2, FileText, Lightbulb } from 'lucide-react';
+import { Send, Loader2, AlertCircle, Bot, X, Minimize2, Maximize2, FileText, Lightbulb } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 
 interface ChatMessage {
@@ -11,7 +11,7 @@ interface ChatMessage {
   content: string;
   timestamp: Date;
   isTyping?: boolean;
-  hasContext?: boolean; // New field to track context-aware messages
+  hasContext?: boolean;
 }
 
 interface VisionProps {
@@ -20,11 +20,10 @@ interface VisionProps {
   onLanguageToggle?: () => void;
   isOpen?: boolean;
   onToggle?: () => void;
-  analysisContext?: string; // New prop for Gemini analysis context
-  onContextUpdate?: (context: string) => void; // New prop for context updates
+  analysisContext?: string;
+  onContextUpdate?: (context: string) => void;
 }
 
-// Helper for typewriter sleep
 const sleep = (ms: number) => new Promise(res => setTimeout(res, ms));
 
 export default function Vision({ 
@@ -46,9 +45,6 @@ export default function Vision({
 
   const chatContainerRef = useRef<HTMLDivElement>(null);
 
-  /**
-   * Updates the analysis context and notifies user
-   */
   useEffect(() => {
     if (analysisContext && analysisContext !== currentContext) {
       console.log('Vision context updated:', {
@@ -60,7 +56,6 @@ export default function Vision({
       setCurrentContext(analysisContext);
       setContextUpdateCount(prev => prev + 1);
       
-      // Add system message about new analysis
       const contextMessage: ChatMessage = {
         id: `context-${Date.now()}`,
         role: 'assistant',
@@ -73,7 +68,6 @@ export default function Vision({
 
       setChatMessages(prev => [...prev, contextMessage]);
       
-      // Show toast notification
       setTimeout(() => {
         toast.success(
           language === 'swahili' 
@@ -83,26 +77,20 @@ export default function Vision({
         );
       }, 0);
 
-      // Callback for parent component
       if (onContextUpdate) {
         onContextUpdate(analysisContext);
       }
     }
   }, [analysisContext, currentContext, language, onContextUpdate, contextUpdateCount]);
 
-  // Toggle minimized state
   const toggleMinimized = () => setIsMinimized(prev => !prev);
 
-  // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
     if (chatContainerRef.current) {
       chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
     }
   }, [chatMessages]);
 
-  /**
-   * Generates suggested questions based on context
-   */
   const getSuggestedQuestions = (): string[] => {
     if (!currentContext) {
       return language === 'swahili' 
@@ -118,7 +106,6 @@ export default function Vision({
           ];
     }
 
-    // Context-aware suggestions
     const suggestions: string[] = [];
     
     if (currentContext.toLowerCase().includes('risk')) {
@@ -145,19 +132,15 @@ export default function Vision({
       );
     }
 
-    // Add general questions
     suggestions.push(
       language === 'swahili' 
         ? 'Niliendelee vipi?'
         : 'How should I proceed?'
     );
 
-    return suggestions.slice(0, 3); // Limit to 3 suggestions
+    return suggestions.slice(0, 3);
   };
 
-  /**
-   * Send message to Groq with context awareness
-   */
   const sendMessage = async (messageContent?: string) => {
     const messageToSend = messageContent || userInput.trim();
     if (!messageToSend || isLoadingResponse) return;
@@ -177,12 +160,11 @@ export default function Vision({
     };
 
     setChatMessages(prev => [...prev, newMsg]);
-    if (!messageContent) setUserInput(''); // Only clear if not from suggestion
+    if (!messageContent) setUserInput('');
     setIsLoadingResponse(true);
     setChatError(null);
 
     try {
-      // Prepare the enhanced message with context
       const enhancedMessage = currentContext 
         ? `ANALYSIS CONTEXT (Use this to answer questions about the farmer's specific situation):\n${currentContext}\n\nUSER QUESTION: ${messageToSend}`
         : messageToSend;
@@ -196,7 +178,7 @@ export default function Vision({
           chatHistory: chatMessages.slice(-8).map(m => ({ 
             role: m.role, 
             content: m.content 
-          })), // Include recent history for better context
+          })),
           hasAnalysisContext: !!currentContext
         }),
       });
@@ -216,7 +198,6 @@ export default function Vision({
         hasContext: !!currentContext
       });
 
-      // Add bot message with typewriter effect
       const botMsg: ChatMessage = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
@@ -228,7 +209,6 @@ export default function Vision({
 
       setChatMessages(prev => [...prev, botMsg]);
 
-      // Enhanced typewriter effect
       const response_text = data.response;
       for (let i = 0; i <= response_text.length; i++) {
         setChatMessages(prev =>
@@ -238,10 +218,9 @@ export default function Vision({
               : m
           )
         );
-        await sleep(20); // Slightly faster typing
+        await sleep(20);
       }
 
-      // Mark typing as complete
       setChatMessages(prev =>
         prev.map(m => 
           m.id === botMsg.id 
@@ -259,7 +238,6 @@ export default function Vision({
 
       setChatError(errorMessage);
       
-      // Add error message to chat
       setChatMessages(prev => [...prev, {
         id: (Date.now() + 2).toString(),
         role: 'assistant',
@@ -277,9 +255,6 @@ export default function Vision({
     }
   };
 
-  /**
-   * Handle keyboard events
-   */
   const handleKeyPress = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -287,9 +262,6 @@ export default function Vision({
     }
   };
 
-  /**
-   * Clear chat history
-   */
   const clearChat = () => {
     setChatMessages([]);
     setChatError(null);
@@ -307,17 +279,16 @@ export default function Vision({
   const suggestedQuestions = getSuggestedQuestions();
 
   return (
-    <div className={`fixed bottom-4 right-4 z-40 bg-white shadow-xl rounded-lg flex flex-col border border-gray-200 transition-all duration-300 ${
+    <div className={`fixed bottom-4 right-4 z-40 bg-white shadow-lg rounded-lg flex flex-col border border-gray-200 transition-all duration-300 ${
       isMinimized ? 'h-14 w-80' : 'h-[600px] w-96'
     }`}>
-      {/* Enhanced Header */}
-      <div className="bg-green-700 text-white px-4 py-3 rounded-t-lg flex justify-between items-center">
+      <div className="bg-gray-800 text-white px-4 py-3 rounded-t-lg flex justify-between items-center">
         <div className="flex items-center space-x-2">
           <Bot size={20} />
           <div>
             <span className="font-semibold">Vision AI</span>
             {currentContext && (
-              <div className="flex items-center text-green-100 text-xs mt-0.5">
+              <div className="flex items-center text-gray-300 text-xs mt-0.5">
                 <FileText size={12} className="mr-1" />
                 <span>Analysis Ready</span>
               </div>
@@ -328,7 +299,7 @@ export default function Vision({
           {onLanguageToggle && (
             <button 
               onClick={onLanguageToggle} 
-              className="p-1 text-green-100 hover:text-white rounded-md transition-colors text-xs font-medium"
+              className="p-1 text-gray-300 hover:text-white rounded-md transition-colors text-xs font-medium"
               title="Toggle language"
             >
               {language === 'english' ? 'EN' : 'SW'}
@@ -336,14 +307,14 @@ export default function Vision({
           )}
           <button 
             onClick={clearChat}
-            className="p-1 text-green-100 hover:text-white rounded-md transition-colors text-xs"
+            className="p-1 text-gray-300 hover:text-white rounded-md transition-colors text-xs"
             title="Clear chat"
           >
             Clear
           </button>
           <button 
             onClick={toggleMinimized}
-            className="p-1 text-green-100 hover:text-white rounded-md transition-colors"
+            className="p-1 text-gray-300 hover:text-white rounded-md transition-colors"
             title={isMinimized ? 'Expand' : 'Minimize'}
           >
             {isMinimized ? <Maximize2 size={16} /> : <Minimize2 size={16} />}
@@ -351,7 +322,7 @@ export default function Vision({
           {onToggle && (
             <button 
               onClick={onToggle}
-              className="p-1 text-green-100 hover:text-white rounded-md transition-colors"
+              className="p-1 text-gray-300 hover:text-white rounded-md transition-colors"
               title="Close"
             >
               <X size={16} />
@@ -362,23 +333,21 @@ export default function Vision({
 
       {!isMinimized && (
         <>
-          {/* Chat Messages Area */}
-          <div ref={chatContainerRef} className="flex-1 overflow-y-auto p-4 space-y-3 bg-gray-50">
+          <div ref={chatContainerRef} className="flex-1 overflow-y-auto p-4 space-y-3 bg-white">
             {chatMessages.length === 0 ? (
               <div className="text-center text-gray-500 mt-4">
-                <div className="mx-auto mb-3 bg-green-100 p-3 rounded-full w-16 h-16 flex items-center justify-center">
-                  <Bot size={28} className="text-green-600" />
+                <div className="mx-auto mb-3 bg-gray-100 p-3 rounded-full w-16 h-16 flex items-center justify-center">
+                  <Bot size={28} className="text-gray-600" />
                 </div>
-                <p className="text-green-700 text-sm font-medium mb-1">Vision AI Assistant</p>
+                <p className="text-gray-700 text-sm font-medium mb-1">Vision AI Assistant</p>
                 <p className="text-xs text-gray-500 mb-4">
                   {language === 'swahili' 
                     ? 'Karibu! Ninawezaje kukusaidia leo?' 
                     : 'How can I assist with your farm analysis?'}
                 </p>
                 
-                {/* Context Status */}
                 {currentContext && (
-                  <div className="bg-blue-50 border border-blue-200 p-3 rounded-lg mb-4">
+                  <div className="bg-blue-50 border border-blue-100 p-3 rounded-lg mb-4">
                     <div className="flex items-center justify-center text-blue-600 mb-2">
                       <Lightbulb size={16} className="mr-1" />
                       <span className="text-xs font-medium">
@@ -393,7 +362,6 @@ export default function Vision({
                   </div>
                 )}
 
-                {/* Suggested Questions */}
                 {suggestedQuestions.length > 0 && (
                   <div className="text-left">
                     <p className="text-xs text-gray-600 mb-2 font-medium">
@@ -405,7 +373,7 @@ export default function Vision({
                           key={index}
                           onClick={() => sendMessage(question)}
                           disabled={isLoadingResponse}
-                          className="w-full text-left text-xs p-2 bg-white border border-green-200 rounded-md hover:bg-green-50 hover:border-green-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          className="w-full text-left text-xs p-2 bg-gray-50 border border-gray-200 rounded-md hover:bg-gray-100 hover:border-gray-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-gray-700"
                         >
                           {question}
                         </button>
@@ -419,12 +387,11 @@ export default function Vision({
                 <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                   <div className={`max-w-xs p-3 rounded-lg break-words relative ${
                     msg.role === 'user' 
-                      ? 'bg-green-600 text-white rounded-br-md' 
-                      : `bg-white text-gray-800 border border-gray-200 rounded-bl-md ${
+                      ? 'bg-gray-800 text-white rounded-br-md' 
+                      : `bg-gray-100 text-gray-800 border border-gray-200 rounded-bl-md ${
                           msg.hasContext ? 'border-l-4 border-l-blue-400' : ''
                         }`
                   }`}>
-                    {/* Context indicator for assistant messages */}
                     {msg.role === 'assistant' && msg.hasContext && (
                       <div className="absolute -top-2 -left-2 bg-blue-500 text-white text-xs px-1.5 py-0.5 rounded-full">
                         <FileText size={10} />
@@ -433,7 +400,6 @@ export default function Vision({
                     
                     <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
                     
-                    {/* Typing indicator */}
                     {msg.isTyping && (
                       <div className="flex space-x-1 mt-2">
                         <div className="w-1 h-1 bg-gray-400 rounded-full animate-bounce"></div>
@@ -442,7 +408,7 @@ export default function Vision({
                       </div>
                     )}
                     
-                    <p className={`text-xs mt-1 text-right ${msg.role === 'user' ? 'text-green-100' : 'text-gray-500'}`}>
+                    <p className={`text-xs mt-1 text-right ${msg.role === 'user' ? 'text-gray-300' : 'text-gray-500'}`}>
                       {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </p>
                   </div>
@@ -450,12 +416,11 @@ export default function Vision({
               ))
             )}
             
-            {/* Loading indicator */}
             {isLoadingResponse && (
               <div className="flex justify-start">
-                <div className="bg-white border border-gray-200 p-3 rounded-lg rounded-bl-md max-w-xs">
+                <div className="bg-gray-100 border border-gray-200 p-3 rounded-lg rounded-bl-md max-w-xs">
                   <div className="flex items-center space-x-2">
-                    <Loader2 size={16} className="animate-spin text-green-600" />
+                    <Loader2 size={16} className="animate-spin text-gray-600" />
                     <span className="text-xs text-gray-600">
                       {language === 'swahili' ? 'Nafikiri...' : 'Thinking...'}
                     </span>
@@ -465,7 +430,6 @@ export default function Vision({
             )}
           </div>
 
-          {/* Error Display */}
           {chatError && (
             <div className="mx-4 mt-2 bg-red-50 border border-red-200 p-3 rounded-md flex items-center">
               <AlertCircle size={16} className="text-red-500 mr-2 flex-shrink-0" />
@@ -482,9 +446,8 @@ export default function Vision({
             </div>
           )}
 
-          {/* Context Status Bar */}
           {currentContext && (
-            <div className="mx-4 mt-2 bg-blue-50 border border-blue-200 p-2 rounded-md">
+            <div className="mx-4 mt-2 bg-blue-50 border border-blue-100 p-2 rounded-md">
               <div className="flex items-center justify-between">
                 <div className="flex items-center text-blue-600">
                   <FileText size={12} className="mr-1" />
@@ -499,7 +462,6 @@ export default function Vision({
             </div>
           )}
 
-          {/* Input Area */}
           <div className="border-t border-gray-200 p-3 bg-white rounded-b-lg">
             <div className="flex space-x-2">
               <textarea
@@ -515,14 +477,14 @@ export default function Vision({
                         ? 'Andika swali lako hapa...' 
                         : 'Type your farming question...')
                 }
-                className="flex-1 border border-green-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent min-h-[44px] max-h-32 overflow-y-auto resize-none text-sm placeholder-green-500"
+                className="flex-1 border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:border-transparent min-h-[44px] max-h-32 overflow-y-auto resize-none text-sm placeholder-gray-500 text-gray-800"
                 disabled={isLoadingResponse}
                 rows={1}
               />
               <button
                 onClick={() => sendMessage()}
                 disabled={!userInput.trim() || isLoadingResponse}
-                className="bg-green-600 text-white p-2 rounded-lg flex items-center justify-center hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors h-11 w-11 flex-shrink-0"
+                className="bg-gray-800 text-white p-2 rounded-lg flex items-center justify-center hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors h-11 w-11 flex-shrink-0"
                 title={language === 'swahili' ? 'Tuma ujumbe' : 'Send message'}
               >
                 {isLoadingResponse ? (
@@ -533,7 +495,6 @@ export default function Vision({
               </button>
             </div>
             
-            {/* Quick Actions */}
             {suggestedQuestions.length > 0 && chatMessages.length > 0 && (
               <div className="mt-2 flex flex-wrap gap-1">
                 {suggestedQuestions.slice(0, 2).map((question, index) => (
@@ -541,7 +502,7 @@ export default function Vision({
                     key={index}
                     onClick={() => sendMessage(question)}
                     disabled={isLoadingResponse}
-                    className="text-xs px-2 py-1 bg-green-50 text-green-600 rounded-full hover:bg-green-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed border border-green-200"
+                    className="text-xs px-2 py-1 bg-gray-100 text-gray-700 rounded-full hover:bg-gray-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed border border-gray-200"
                   >
                     {question.length > 25 ? question.substring(0, 25) + '...' : question}
                   </button>
@@ -549,7 +510,6 @@ export default function Vision({
               </div>
             )}
             
-            {/* Input help text */}
             <p className="text-xs text-gray-500 mt-1">
               {language === 'swahili' 
                 ? 'Bonyeza Enter kutuma, Shift+Enter mstari mpya'
