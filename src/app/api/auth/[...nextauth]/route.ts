@@ -1,4 +1,4 @@
-import NextAuth, { type NextAuthOptions, type User, type Account, type Session } from "next-auth";
+import NextAuth, { type NextAuthOptions, type User, type Account } from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
 import CredentialsProvider from "next-auth/providers/credentials";
 import { PrismaClient } from "@prisma/client";
@@ -6,7 +6,6 @@ import bcrypt from "bcryptjs";
 
 const prisma = new PrismaClient();
 
-// Define the role type locally based on your schema
 type UserRole = "farmer" | "buyer";
 
 const authOptions: NextAuthOptions = {
@@ -53,22 +52,23 @@ const authOptions: NextAuthOptions = {
   ],
 
   callbacks: {
-    // ✅ Typed params here
     async signIn({ user, account }: { user: User; account: Account | null }) {
       if (account?.provider === "google") {
         try {
           let selectedRole: UserRole = "buyer";
-          if (account?.callbackUrl) {
-            try {
-              const url = new URL(account.callbackUrl);
-              const roleParam = url.searchParams.get("role");
-              if (roleParam === "farmer" || roleParam === "buyer") {
-                selectedRole = roleParam as UserRole;
-              }
-            } catch {
-              console.warn("Invalid callback URL, defaulting to buyer");
-            }
-          }
+
+          // ❌ account.callbackUrl does not exist on Account type
+          // if (account?.callbackUrl) {
+          //   try {
+          //     const url = new URL(account.callbackUrl);
+          //     const roleParam = url.searchParams.get("role");
+          //     if (roleParam === "farmer" || roleParam === "buyer") {
+          //       selectedRole = roleParam as UserRole;
+          //     }
+          //   } catch {
+          //     console.warn("Invalid callback URL, defaulting to buyer");
+          //   }
+          // }
 
           const existingUser = await prisma.user.findUnique({
             where: { email: user.email! },
