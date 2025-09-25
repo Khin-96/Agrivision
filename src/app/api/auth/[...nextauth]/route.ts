@@ -1,7 +1,7 @@
 import NextAuth from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
 import CredentialsProvider from "next-auth/providers/credentials";
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient, UserRole } from "@prisma/client";
 import bcrypt from "bcryptjs";
 
 const prisma = new PrismaClient();
@@ -38,7 +38,7 @@ const authOptions = {
           id: user.id,
           email: user.email,
           name: user.name,
-          role: user.role,
+          role: user.role as UserRole, // Explicitly cast to UserRole
           idVerified: user.idVerified,
           image: user.image,
           idFrontUrl: user.idFrontUrl,
@@ -53,13 +53,13 @@ const authOptions = {
     async signIn({ user, account }) {
       if (account?.provider === "google") {
         try {
-          let selectedRole: "buyer" | "farmer" = "buyer";
+          let selectedRole: UserRole = "buyer";
           if (account.callbackUrl) {
             try {
               const url = new URL(account.callbackUrl);
               const roleParam = url.searchParams.get("role");
               if (roleParam === "farmer" || roleParam === "buyer") {
-                selectedRole = roleParam;
+                selectedRole = roleParam as UserRole;
               }
             } catch {
               console.warn("Invalid callback URL, defaulting to buyer");
@@ -111,7 +111,7 @@ const authOptions = {
     async session({ session, token }) {
       if (token) {
         session.user.id = token.id as string;
-        session.user.role = token.role as "farmer" | "buyer";
+        session.user.role = token.role as UserRole;
         session.user.idVerified = token.idVerified as boolean;
         session.user.image = token.image as string | null;
         session.user.idFrontUrl = token.idFrontUrl as string | null;
@@ -139,9 +139,5 @@ const authOptions = {
   },
 };
 
-
 const handler = NextAuth(authOptions);
 export { handler as GET, handler as POST };
-
-
-// export { authOptions };
