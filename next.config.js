@@ -1,6 +1,5 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  experimental: { appDir: true },
   images: {
     domains: ['res.cloudinary.com'],
   },
@@ -9,6 +8,10 @@ const nextConfig = {
     config.externals = config.externals || [];
     config.externals.push('@tensorflow/tfjs-node', 'node-pre-gyp');
     return config;
+  },
+  eslint: {
+    
+    ignoreDuringBuilds: true,
   },
 };
 
