@@ -157,7 +157,7 @@ export default function FarmMapInner() {
         mapContainerStyle={{ width: "100%", height: "60vh" }}
         center={{ lat: -1.286389, lng: 36.817223 }}
         zoom={8}
-        onLoad={(map) => (mapRef.current = map)}
+        onLoad={(map) => { mapRef.current = map; }}
       >
         <DrawingManager
           onPolygonComplete={handlePolygonComplete}
