@@ -1,4 +1,3 @@
-// app/api/auth/[...nextauth]/route.ts
 import NextAuth from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
 import CredentialsProvider from "next-auth/providers/credentials";
@@ -7,7 +6,7 @@ import bcrypt from "bcryptjs";
 
 const prisma = new PrismaClient();
 
-export const authOptions = {
+const authOptions = {
   providers: [
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID!,
@@ -54,7 +53,6 @@ export const authOptions = {
     async signIn({ user, account }) {
       if (account?.provider === "google") {
         try {
-          // Get role from callback URL or default to buyer
           let selectedRole: "buyer" | "farmer" = "buyer";
           if (account.callbackUrl) {
             try {
@@ -94,7 +92,7 @@ export const authOptions = {
         }
       }
 
-      return true; // Allow credentials login
+      return true;
     },
 
     async jwt({ token, user }) {
@@ -124,11 +122,8 @@ export const authOptions = {
     },
 
     async redirect({ url, baseUrl }) {
-      // Handle redirects properly
       if (url.startsWith("/")) return `${baseUrl}${url}`;
       else if (new URL(url).origin === baseUrl) return url;
-      
-      // Default redirect to market page
       return `${baseUrl}/market`;
     },
   },
@@ -140,9 +135,13 @@ export const authOptions = {
 
   session: {
     strategy: "jwt" as const,
-    maxAge: 30 * 24 * 60 * 60, // 30 days
+    maxAge: 30 * 24 * 60 * 60,
   },
 };
 
+// ✅ Internal handler for App Router
 const handler = NextAuth(authOptions);
 export { handler as GET, handler as POST };
+
+// ✅ Export authOptions only for dev/test imports (not picked up by Next.js)
+export { authOptions };
