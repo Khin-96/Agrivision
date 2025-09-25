@@ -42,4 +42,7 @@ next-env.d.ts
 
 /src/generated/prisma
 
-service-account.jsonagrivision-472512-f2c7092e41dc.json
+service-account.json
+agrivision-472512-f2c7092e41dc.json
+
+service-account.json
