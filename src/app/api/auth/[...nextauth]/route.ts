@@ -139,9 +139,9 @@ const authOptions = {
   },
 };
 
-// ✅ Internal handler for App Router
+
 const handler = NextAuth(authOptions);
 export { handler as GET, handler as POST };
 
-// ✅ Export authOptions only for dev/test imports (not picked up by Next.js)
-export { authOptions };
+
+// export { authOptions };
