@@ -1,15 +1,12 @@
-// src/app/api/farm-monitor/route.ts
 import { NextResponse } from "next/server";
 import Groq from "groq-sdk";
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY || "" });
 const GMAP_KEY = process.env.GOOGLE_MAPS_API_KEY || "";
 
-/** Detect simple location questions */
 const isLocationQuestion = (q: string) =>
   /\b(where|location|located|what city|what town|which town|nearest)\b/i.test(q);
 
-/** Reverse geocode lat/lng */
 async function reverseGeocode(lat: number, lng: number) {
   if (!GMAP_KEY) return null;
   const url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&key=${GMAP_KEY}&language=en`;
@@ -33,7 +30,6 @@ async function reverseGeocode(lat: number, lng: number) {
   return first.formatted_address?.split(",").slice(0, 3).join(", ") || null;
 }
 
-/** Compute centroid */
 function centroid(coords: { lat: number; lng: number }[]) {
   const sum = coords.reduce(
     (acc, c) => ({ lat: acc.lat + Number(c.lat), lng: acc.lng + Number(c.lng) }),
@@ -42,7 +38,6 @@ function centroid(coords: { lat: number; lng: number }[]) {
   return { lat: sum.lat / coords.length, lng: sum.lng / coords.length };
 }
 
-/** Translate raw IoT values into farmer-friendly descriptions */
 function summarizeField(field: any) {
   let health =
     field.ndvi > 0.6
@@ -69,15 +64,14 @@ function summarizeField(field: any) {
 export async function POST(req: Request) {
   try {
     const body = await req.json().catch(() => ({}));
-    const { field, question = "", visionMode = false } = body;
+    const { field, question = "", centroid: centroidOverride } = body;
 
     if (!field || !field.coordinates?.length) {
       return NextResponse.json({ answer: "Please draw a field on the map first." });
     }
 
-    const center = centroid(field.coordinates);
+    const center = centroidOverride || centroid(field.coordinates);
 
-    // Handle location Qs directly
     if (isLocationQuestion(question)) {
       const place = await reverseGeocode(center.lat, center.lng);
       return NextResponse.json({ answer: place || `Lat ${center.lat}, Lng ${center.lng}` });
@@ -88,10 +82,9 @@ export async function POST(req: Request) {
 
     const systemInstruction = `
 You are Vision, a helpful farm assistant.
-- For simple factual questions: answer short and clear.
-- For broader farming questions: give a 1-line summary, a short detailed explanation, and 3 simple farmer-friendly actions.
-- Avoid using scientific terms like NDVI/NDWI; instead, describe them as crop health, soil moisture, or plant water needs.
-- If visionMode is true, acknowledge photo/vision analysis (though not implemented here).
+- Answer short and clear for factual questions.
+- For broader farming questions: 1-line summary, short explanation, 3 farmer-friendly actions.
+- Avoid technical terms like NDVI; describe crop health, soil moisture, or plant needs.
 `;
 
     const userMessage = `
@@ -101,7 +94,6 @@ Farm context:
 - Field conditions: ${fieldSummary}
 
 Farmer's question: ${question}
-${visionMode ? "Vision mode: true (photo analysis requested)." : ""}
 `;
 
     const chat = await groq.chat.completions.create({
