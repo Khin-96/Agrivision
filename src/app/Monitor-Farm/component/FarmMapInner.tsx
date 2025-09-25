@@ -6,8 +6,10 @@ import {
   useJsApiLoader,
   Polygon,
   DrawingManager,
-  DirectionsRenderer,
+  OverlayView,
+  Autocomplete,
 } from "@react-google-maps/api";
+import { motion, AnimatePresence } from "framer-motion";
 
 interface Field {
   id: string;
@@ -21,6 +23,12 @@ interface Field {
   pollen: string;
   airQuality: string;
   elevation: number;
+  centroid?: { lat: number; lng: number };
+  yieldEstimate?: string;
+  waterAdvice?: string;
+  sunAdvice?: string;
+  windAdvice?: string;
+  phAdvice?: string;
 }
 
 interface Message {
@@ -38,36 +46,74 @@ export default function FarmMapInner() {
   const mapRef = useRef<google.maps.Map | null>(null);
   const chatRef = useRef<HTMLDivElement | null>(null);
 
+  const [mapCenter, setMapCenter] = useState({ lat: -1.286389, lng: 36.817223 });
   const [fields, setFields] = useState<Field[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
-  const [searchQuery, setSearchQuery] = useState("");
-  const [directions, setDirections] =
-    useState<google.maps.DirectionsResult | null>(null);
+  const [selectedField, setSelectedField] = useState<Field | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [hoveredField, setHoveredField] = useState<Field | null>(null);
+  const [chatMinimized, setChatMinimized] = useState(false);
+  const [chatVisible, setChatVisible] = useState(true);
+
+  const [searchInput, setSearchInput] = useState("");
+  const [autocompleteSuggestions, setAutocompleteSuggestions] = useState<google.maps.places.AutocompletePrediction[]>([]);
+  const serviceRef = useRef<google.maps.places.AutocompleteService | null>(null);
 
   // Auto-scroll chat
   useEffect(() => {
-    chatRef.current?.scrollTo({
-      top: chatRef.current.scrollHeight,
-      behavior: "smooth",
-    });
+    chatRef.current?.scrollTo({ top: chatRef.current.scrollHeight, behavior: "smooth" });
   }, [messages]);
 
-  // -------------------
-  // Field Data Generation (via /api/farm-monitor)
-  // -------------------
-  const generateFieldData = async (
-    coordinates: google.maps.LatLngLiteral[]
-  ): Promise<Omit<Field, "id" | "name" | "coordinates" | "area">> => {
+  // Auto-hide chat after 10s when minimized
+  useEffect(() => {
+    if (chatMinimized) {
+      const timer = setTimeout(() => setChatVisible(false), 10000);
+      return () => clearTimeout(timer);
+    } else {
+      setChatVisible(true);
+    }
+  }, [chatMinimized]);
+
+  // Initialize Autocomplete Service
+  useEffect(() => {
+    if (!serviceRef.current && isLoaded) {
+      serviceRef.current = new google.maps.places.AutocompleteService();
+    }
+  }, [isLoaded]);
+
+  // Fetch autocomplete suggestions
+  useEffect(() => {
+    if (!searchInput || !serviceRef.current) {
+      setAutocompleteSuggestions([]);
+      return;
+    }
+
+    serviceRef.current.getPlacePredictions(
+      { input: searchInput, componentRestrictions: { country: "ke" } },
+      (predictions, status) => {
+        if (status === google.maps.places.PlacesServiceStatus.OK && predictions) {
+          setAutocompleteSuggestions(predictions);
+        } else {
+          setAutocompleteSuggestions([]);
+        }
+      }
+    );
+  }, [searchInput]);
+
+  const generateFieldData = async (coordinates: google.maps.LatLngLiteral[]) => {
     try {
+      const area = google.maps.geometry.spherical.computeArea(
+        new google.maps.Polygon({ paths: coordinates }).getPath()
+      );
+
       const res = await fetch("/api/farm-monitor", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ field: { coordinates }, question: "status" }),
+        body: JSON.stringify({ field: { coordinates, area }, action: "generateFieldData" }),
       });
 
       const data = await res.json();
-
       return data.fieldData || {
         health: "healthy",
         soil: "normal",
@@ -76,9 +122,13 @@ export default function FarmMapInner() {
         pollen: "Moderate",
         airQuality: "Good",
         elevation: 0,
+        yieldEstimate: "Estimated yield: 500kg",
+        waterAdvice: "Irrigate moderately",
+        sunAdvice: "Provide shade if too hot",
+        windAdvice: "Install windbreaks if strong wind",
+        phAdvice: "pH is acceptable",
       };
-    } catch (err) {
-      console.error("Failed to fetch field data:", err);
+    } catch {
       return {
         health: "healthy",
         soil: "normal",
@@ -87,16 +137,23 @@ export default function FarmMapInner() {
         pollen: "Moderate",
         airQuality: "Good",
         elevation: 0,
+        yieldEstimate: "Estimated yield: 500kg",
+        waterAdvice: "Irrigate moderately",
+        sunAdvice: "Provide shade if too hot",
+        windAdvice: "Install windbreaks if strong wind",
+        phAdvice: "pH is acceptable",
       };
     }
   };
 
-  // -------------------
-  // Handlers
-  // -------------------
   const handlePolygonComplete = async (polygon: google.maps.Polygon) => {
     const path = polygon.getPath().getArray().map((p) => ({ lat: p.lat(), lng: p.lng() }));
     const area = google.maps.geometry.spherical.computeArea(polygon.getPath());
+
+    const centroidLatLng = {
+      lat: path.reduce((sum, p) => sum + p.lat, 0) / path.length,
+      lng: path.reduce((sum, p) => sum + p.lng, 0) / path.length,
+    };
 
     const extraData = await generateFieldData(path);
 
@@ -105,167 +162,110 @@ export default function FarmMapInner() {
       name: `Field ${fields.length + 1}`,
       coordinates: path,
       area,
+      centroid: centroidLatLng,
       ...extraData,
     };
 
     setFields((prev) => [...prev, newField]);
-    polygon.setMap(null);
+    setSelectedField(newField);
 
-    // Pan and zoom to polygon centroid
-    const centroidLatLng = {
-      lat: path.reduce((sum, p) => sum + p.lat, 0) / path.length,
-      lng: path.reduce((sum, p) => sum + p.lng, 0) / path.length,
-    };
-    mapRef.current?.panTo(centroidLatLng);
-    mapRef.current?.setZoom(16);
+    polygon.setMap(null);
+  };
+
+  const focusField = (field: Field) => {
+    if (!mapRef.current || !field.centroid) return;
+    mapRef.current.panTo(field.centroid);
+    mapRef.current.setZoom(16);
+    setMapCenter(field.centroid);
   };
 
   const sendMessage = async () => {
-    if (!input.trim() || fields.length === 0) {
-      if (fields.length === 0) alert("Draw a field first!");
-      return;
-    }
+    if (!input.trim()) return;
+    if (fields.length === 0) return alert("Please draw a field first!");
 
     const userMessage: Message = { role: "user", content: input };
     setMessages((prev) => [...prev, userMessage]);
     setInput("");
+    setIsLoading(true);
 
     try {
+      const fieldToUse = selectedField || fields[fields.length - 1];
+      const centroid = fieldToUse.centroid || {
+        lat: fieldToUse.coordinates.reduce((sum, p) => sum + p.lat, 0) / fieldToUse.coordinates.length,
+        lng: fieldToUse.coordinates.reduce((sum, p) => sum + p.lng, 0) / fieldToUse.coordinates.length,
+      };
+
       const res = await fetch("/api/farm-monitor", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ field: fields[fields.length - 1], question: input }),
+        body: JSON.stringify({ field: fieldToUse, question: input, centroid }),
       });
 
       const data = await res.json();
-      const botMessage: Message = {
-        role: "assistant",
-        content: data.answer || "No response",
-      };
-      setMessages((prev) => [...prev, botMessage]);
-
-      // Update last field if fieldData returned
-      if (data.fieldData) {
-        setFields((prev) =>
-          prev.map((f, idx) =>
-            idx === prev.length - 1 ? { ...f, ...data.fieldData } : f
-          )
-        );
-      }
-    } catch (err) {
-      console.error("Chat error:", err);
+      setMessages((prev) => [...prev, { role: "assistant", content: data.answer || "No response" }]);
+    } catch {
+      setMessages((prev) => [
+        ...prev,
+        { role: "assistant", content: "Sorry, I encountered an error. Please try again." },
+      ]);
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const handleSearch = () => {
-    if (!mapRef.current || !searchQuery.trim()) return;
-    const service = new google.maps.places.PlacesService(mapRef.current);
+  const quickQuestion = (question: string) => setInput(question);
 
-    service.findPlaceFromQuery(
-      { query: searchQuery, fields: ["geometry", "name"] },
-      (results, status) => {
-        if (
-          status === google.maps.places.PlacesServiceStatus.OK &&
-          results &&
-          results[0].geometry?.location
-        ) {
-          const loc = results[0].geometry.location;
-          mapRef.current?.panTo(loc);
-          mapRef.current?.setZoom(15);
-        } else {
-          alert("Place not found");
-        }
-      }
-    );
-  };
-
-  const locateMe = () => {
-    if (!navigator.geolocation || !mapRef.current) return;
-
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const loc = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-        mapRef.current?.panTo(loc);
+  const handleSuggestionClick = (suggestion: google.maps.places.AutocompletePrediction) => {
+    const geocoder = new google.maps.Geocoder();
+    geocoder.geocode({ placeId: suggestion.place_id }, (results, status) => {
+      if (status === "OK" && results && results[0].geometry?.location) {
+        const loc = results[0].geometry.location;
+        const position = { lat: loc.lat(), lng: loc.lng() };
+        setMapCenter(position);
+        mapRef.current?.panTo(position);
         mapRef.current?.setZoom(16);
-      },
-      (err) => {
-        alert("Unable to detect location");
-        console.error(err);
-      },
-      { enableHighAccuracy: true }
-    );
+        setSearchInput(suggestion.description);
+        setAutocompleteSuggestions([]);
+      }
+    });
   };
 
-  const navigateToField = (field: Field) => {
-    if (!navigator.geolocation || !mapRef.current) return;
-
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const origin = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-        const destination = {
-          lat: field.coordinates.reduce((sum, p) => sum + p.lat, 0) / field.coordinates.length,
-          lng: field.coordinates.reduce((sum, p) => sum + p.lng, 0) / field.coordinates.length,
-        };
-
-        const directionsService = new google.maps.DirectionsService();
-
-        directionsService.route(
-          {
-            origin,
-            destination,
-            travelMode: google.maps.TravelMode.DRIVING,
-          },
-          (result, status) => {
-            if (status === "OK" && result) {
-              setDirections(result);
-              mapRef.current?.panTo(destination);
-            } else {
-              alert("Unable to generate route");
-            }
-          }
-        );
-      },
-      (err) => {
-        alert("Unable to detect your location");
-        console.error(err);
-      },
-      { enableHighAccuracy: true }
+  if (!isLoaded)
+    return (
+      <div className="flex justify-center items-center h-screen text-lg text-gray-700">
+        Loading map...
+      </div>
     );
-  };
-
-  if (!isLoaded) return <p>Loading map...</p>;
 
   return (
-    <div className="space-y-4">
-      {/* Search bar */}
-      <div className="flex gap-2 p-2 bg-gray-200 rounded">
-        <input
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder="Search for a place..."
-          className="flex-1 border rounded p-2 bg-white text-black"
-          onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-        />
-        <button onClick={handleSearch} className="bg-green-600 text-white px-4 rounded">
-          Search
-        </button>
-        <button onClick={locateMe} className="bg-blue-600 text-white px-4 rounded">
-          My Location
-        </button>
-      </div>
-
-      {/* Google Map */}
+    <div className="relative w-full h-screen">
       <GoogleMap
-        mapContainerStyle={{ width: "100%", height: "60vh" }}
-        center={{ lat: -1.286389, lng: 36.817223 }}
-        zoom={8}
+        mapContainerStyle={{ width: "100%", height: "100%" }}
+        center={mapCenter}
+        zoom={12}
         onLoad={(map) => (mapRef.current = map)}
+        onDragEnd={() => {
+          if (mapRef.current) {
+            const center = mapRef.current.getCenter();
+            if (center) setMapCenter({ lat: center.lat(), lng: center.lng() });
+          }
+        }}
       >
         <DrawingManager
           onPolygonComplete={handlePolygonComplete}
           options={{
+            drawingControl: true,
             drawingControlOptions: {
+              position: google.maps.ControlPosition.TOP_CENTER,
               drawingModes: [google.maps.drawing.OverlayType.POLYGON],
+            },
+            polygonOptions: {
+              fillColor: "#4caf50",
+              fillOpacity: 0.35,
+              strokeWeight: 2,
+              clickable: true,
+              editable: false,
+              zIndex: 1,
             },
           }}
         />
@@ -279,49 +279,210 @@ export default function FarmMapInner() {
               paths={f.coordinates}
               options={{
                 fillColor,
-                fillOpacity: 0.5,
+                fillOpacity: 0.35,
                 strokeColor: fillColor,
                 strokeWeight: 2,
               }}
               onClick={() => {
-                alert(
-                  `${f.name}\nStatus: ${f.health}\nSoil: ${f.soil}\nTemp: ${f.temperature}°C\nWeather: ${f.weather}\nPollen: ${f.pollen}\nAir: ${f.airQuality}\nElevation: ${f.elevation}m`
-                );
-                navigateToField(f);
+                setSelectedField(f);
+                focusField(f);
               }}
+              onMouseOver={() => setHoveredField(f)}
+              onMouseOut={() => setHoveredField(null)}
             />
           );
         })}
 
-        {directions && <DirectionsRenderer directions={directions} />}
+        {/* Hover Popup */}
+        <AnimatePresence>
+          {hoveredField?.centroid && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.8 }}
+              transition={{ duration: 0.2 }}
+            >
+              <OverlayView position={hoveredField.centroid} mapPaneName={OverlayView.OVERLAY_MOUSE_TARGET}>
+                <div className="bg-white/80 text-black p-3 rounded-lg shadow-lg text-xs max-w-xs backdrop-blur-sm">
+                  <div className="font-bold text-sm mb-1">{hoveredField.name}</div>
+                  <div>Health: {hoveredField.health}</div>
+                  <div>Soil: {hoveredField.soil}</div>
+                  <div>Temp: {hoveredField.temperature}°C</div>
+                  <div>Weather: {hoveredField.weather}</div>
+                  <div>Pollen: {hoveredField.pollen}</div>
+                  <div>Yield Est.: {hoveredField.yieldEstimate}</div>
+                  <div>Water Advice: {hoveredField.waterAdvice}</div>
+                  <div>Sun Advice: {hoveredField.sunAdvice}</div>
+                  <div>Wind Advice: {hoveredField.windAdvice}</div>
+                  <div>pH Advice: {hoveredField.phAdvice}</div>
+                </div>
+              </OverlayView>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Search Bar */}
+        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-50 w-96">
+          <input
+            type="text"
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            placeholder="Search places..."
+            className="w-full px-4 py-2 rounded-lg shadow-lg text-black"
+          />
+          {searchInput && autocompleteSuggestions.length > 0 && (
+            <div className="bg-white rounded-lg mt-1 max-h-60 overflow-y-auto shadow-lg z-50">
+              {autocompleteSuggestions.map((s, i) => (
+                <div
+                  key={i}
+                  className="px-4 py-2 cursor-pointer hover:bg-gray-200 transition-all"
+                  onClick={() => handleSuggestionClick(s)}
+                >
+                  {s.description}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </GoogleMap>
 
-      {/* Chat UI */}
-      <div className="p-4 bg-gray-100 rounded-lg">
-        <h2 className="font-bold mb-2">Ask About Your Farm</h2>
-        <div
-          ref={chatRef}
-          className="h-48 overflow-y-auto bg-white p-2 rounded border mb-2 text-black"
-        >
-          {messages.map((m, i) => (
-            <p key={i} className={m.role === "user" ? "text-blue-600" : "text-green-700"}>
-              <b>{m.role === "user" ? "Farmer:" : "Assistant:"}</b> {m.content}
-            </p>
-          ))}
-        </div>
-        <div className="flex gap-2">
-          <input
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder="Ask a question..."
-            className="flex-1 border rounded p-2 bg-white text-black"
-            onKeyDown={(e) => e.key === "Enter" && sendMessage()}
-          />
-          <button onClick={sendMessage} className="bg-green-600 text-white px-4 rounded">
-            Send
-          </button>
-        </div>
-      </div>
+      {/* Draggable Fields Panel */}
+      <AnimatePresence>
+        {fields.length > 0 && (
+          <motion.div
+            drag
+            dragConstraints={{ top: 0, left: 0, right: 1000, bottom: 1000 }}
+            initial={{ opacity: 0, y: -50 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -50 }}
+            className="absolute top-20 left-4 bg-white/20 backdrop-blur-md p-4 rounded-xl max-w-xs z-40 shadow-lg cursor-grab transition-all duration-300"
+          >
+            <h3 className="font-bold mb-2 text-white text-lg">Your Fields</h3>
+            <div className="flex flex-col gap-2 max-h-80 overflow-y-auto">
+              {fields.map((field) => (
+                <div
+                  key={field.id}
+                  className={`p-3 rounded-lg cursor-pointer border-2 transition-all duration-200 hover:scale-105 ${
+                    selectedField?.id === field.id
+                      ? "border-blue-400 bg-blue-50/50"
+                      : field.health === "critical"
+                      ? "border-red-500 bg-red-50/50"
+                      : field.health === "stressed"
+                      ? "border-orange-500 bg-orange-50/50"
+                      : "border-green-500 bg-green-50/50"
+                  }`}
+                  onClick={() => {
+                    setSelectedField(field);
+                    focusField(field);
+                  }}
+                >
+                  <div className="font-semibold text-white">{field.name}</div>
+                  <div className="text-xs text-white">
+                    {(field.area / 10000).toFixed(2)} ha • {field.temperature}°C
+                  </div>
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Chat Panel */}
+      <AnimatePresence>
+        {chatVisible && (
+          <motion.div
+            initial={{ opacity: 0, x: 50 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: 50 }}
+            className={`absolute top-0 bottom-0 right-4 w-96 flex flex-col z-50 shadow-lg transition-all duration-300 ${
+              chatMinimized ? "h-12" : "h-full"
+            }`}
+          >
+            {/* Header */}
+            <div
+              className="flex justify-between items-center px-3 py-2 bg-black/70 text-white rounded-t-xl cursor-pointer"
+              onClick={() => setChatMinimized(!chatMinimized)}
+            >
+              <span>💬 Farm AI</span>
+              <button className="text-sm">{chatMinimized ? "⬆️" : "⬇️"}</button>
+            </div>
+
+            {/* Floating Icon when minimized */}
+            {chatMinimized && (
+              <div
+                className="absolute -left-12 top-0 bg-blue-600 text-white p-2 rounded-full cursor-pointer shadow-lg"
+                onClick={() => setChatMinimized(false)}
+              >
+                💬
+              </div>
+            )}
+
+            {!chatMinimized && (
+              <>
+                {/* Messages */}
+                <div
+                  ref={chatRef}
+                  className="flex-1 overflow-y-auto px-4 py-3 bg-black/40 text-white"
+                >
+                  {messages.length === 0 ? (
+                    <p className="text-gray-200 text-sm">Ask about your farm... 🌱</p>
+                  ) : (
+                    messages.map((m, i) => (
+                      <div
+                        key={i}
+                        className={`mb-2 max-w-[85%] px-3 py-2 rounded-lg transition-all duration-200 ${
+                          m.role === "assistant"
+                            ? "bg-green-600 text-white ml-auto"
+                            : "bg-black text-white mr-auto"
+                        }`}
+                      >
+                        <b>{m.role === "user" ? "👤 You: " : "🤖 Bot: "}</b>
+                        {m.content}
+                      </div>
+                    ))
+                  )}
+                  {isLoading && <div className="text-gray-200">Thinking...</div>}
+                </div>
+
+                {/* Quick questions */}
+                <div className="flex flex-wrap gap-2 px-3 py-2 bg-black/50">
+                  {[
+                    { label: "📍 Location", question: "Where is this field located?" },
+                    { label: "🌱 Crop Health", question: "How are my crops doing?" },
+                    { label: "🌤️ Weather", question: "Hali ya hewa leo?" },
+                    { label: "🌿 Mazao", question: "Mazao yangu yakoje?" },
+                  ].map((q, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => quickQuestion(q.question)}
+                      className="text-xs bg-white/20 text-white px-3 py-1 rounded-lg hover:bg-white/30 transition-all duration-150"
+                    >
+                      {q.label}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Input */}
+                <div className="flex gap-2 px-3 py-2 bg-white/90 rounded-b-xl">
+                  <input
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    placeholder="Ask a question..."
+                    className="flex-1 rounded px-3 py-2 text-black"
+                    onKeyDown={(e) => e.key === "Enter" && sendMessage()}
+                  />
+                  <button
+                    onClick={sendMessage}
+                    className="bg-blue-600 text-white px-4 py-2 rounded-lg"
+                  >
+                    Send
+                  </button>
+                </div>
+              </>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
