@@ -240,12 +240,7 @@ export default function MonitorFarmPage() {
 
           {/* Map Area */}
           <main className="flex-1 relative">
-            <FarmMapInner
-              layer={currentLayer}
-              showAnalysis={true}
-              onLocationChange={handleLocationChange}
-              center={center}
-            />
+            <FarmMapInner />
           </main>
         </div>
 
