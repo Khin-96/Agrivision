@@ -161,7 +161,11 @@ export default function FarmMapInner() {
       >
         <DrawingManager
           onPolygonComplete={handlePolygonComplete}
-          options={{ drawingControlOptions: { drawingModes: ["polygon"] } }}
+          options={{ 
+            drawingControlOptions: { 
+              drawingModes: [google.maps.drawing.OverlayType.POLYGON] 
+            } 
+          }}
         />
         {fields.map((f) => (
           <Polygon
