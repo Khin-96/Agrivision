@@ -1,10 +1,13 @@
 import NextAuth from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
 import CredentialsProvider from "next-auth/providers/credentials";
-import { PrismaClient, UserRole } from "@prisma/client";
+import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
 
 const prisma = new PrismaClient();
+
+// Define the role type locally based on your schema
+type UserRole = "farmer" | "buyer";
 
 const authOptions = {
   providers: [
@@ -38,7 +41,7 @@ const authOptions = {
           id: user.id,
           email: user.email,
           name: user.name,
-          role: user.role as UserRole, // Explicitly cast to UserRole
+          role: user.role as UserRole,
           idVerified: user.idVerified,
           image: user.image,
           idFrontUrl: user.idFrontUrl,
