@@ -1,297 +1,122 @@
-import { NextRequest, NextResponse } from 'next/server';
-import path from 'path';
-import { readFileSync, existsSync } from 'fs';
+// src/app/api/farm-monitor/route.ts
+import { NextResponse } from "next/server";
+import Groq from "groq-sdk";
 
-// Types
-type AnalysisType = 'ndvi' | 'ndwi' | 'temperature' | 'rgb';
+const groq = new Groq({ apiKey: process.env.GROQ_API_KEY || "" });
+const GMAP_KEY = process.env.GOOGLE_MAPS_API_KEY || "";
 
-interface QueryParams {
-  lat: string;
-  lng: string;
-  type: AnalysisType;
+/** Detect simple location questions */
+const isLocationQuestion = (q: string) =>
+  /\b(where|location|located|what city|what town|which town|nearest)\b/i.test(q);
+
+/** Reverse geocode lat/lng */
+async function reverseGeocode(lat: number, lng: number) {
+  if (!GMAP_KEY) return null;
+  const url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&key=${GMAP_KEY}&language=en`;
+  const res = await fetch(url);
+  if (!res.ok) return null;
+  const payload = await res.json();
+  const first = payload.results?.[0];
+  if (!first) return null;
+
+  const comps = first.address_components || [];
+  const find = (type: string) =>
+    comps.find((c: any) => Array.isArray(c.types) && c.types.includes(type))?.long_name;
+
+  const locality = find("locality") || find("sublocality") || find("postal_town");
+  const admin = find("administrative_area_level_1") || find("administrative_area_level_2");
+  const country = find("country");
+
+  if (locality && country) return `${locality}, ${country}`;
+  if (locality) return locality;
+  if (admin && country) return `${admin}, ${country}`;
+  return first.formatted_address?.split(",").slice(0, 3).join(", ") || null;
 }
 
-interface EarthEngineResponse {
-  tileUrl: string;
+/** Compute centroid */
+function centroid(coords: { lat: number; lng: number }[]) {
+  const sum = coords.reduce(
+    (acc, c) => ({ lat: acc.lat + Number(c.lat), lng: acc.lng + Number(c.lng) }),
+    { lat: 0, lng: 0 }
+  );
+  return { lat: sum.lat / coords.length, lng: sum.lng / coords.length };
 }
 
-interface ServiceAccount {
-  type: string;
-  project_id: string;
-  private_key_id: string;
-  private_key: string;
-  client_email: string;
-  client_id: string;
-  auth_uri: string;
-  token_uri: string;
-  auth_provider_x509_cert_url: string;
-  client_x509_cert_url: string;
+/** Translate raw IoT values into farmer-friendly descriptions */
+function summarizeField(field: any) {
+  let health =
+    field.ndvi > 0.6
+      ? "very healthy crops"
+      : field.ndvi > 0.3
+      ? "moderately healthy crops"
+      : "stressed or weak crops";
+
+  let water =
+    field.soilMoisture > 35
+      ? "soil has plenty of moisture"
+      : field.soilMoisture > 20
+      ? "soil moisture is moderate"
+      : "soil is quite dry";
+
+  let ph =
+    field.soilPh >= 6 && field.soilPh <= 7
+      ? "soil pH is good for most crops"
+      : `soil pH is ${field.soilPh}, which may need adjustment`;
+
+  return `Crop health: ${health}. ${water}. ${ph}. Temperature is around ${field.temperature}°C.`;
 }
 
-// Logging
-function log(level: 'info' | 'warn' | 'error', message: string, data?: any) {
-  const timestamp = new Date().toISOString();
-  const logMessage = `[${timestamp}] [${level.toUpperCase()}] ${message}`;
-  if (data) console[level](logMessage, data);
-  else console[level](logMessage);
-}
-
-// Earth Engine config
-const EARTH_ENGINE_CONFIG = {
-  serviceAccountPath: process.env.EARTH_ENGINE_SERVICE_ACCOUNT_PATH || path.join(process.cwd(), 'service-account.json'),
-  satellites: {
-    sentinel2: 'COPERNICUS/S2_SR_HARMONIZED',
-    landsat8: 'LANDSAT/LC08/C02/T1_L2',
-  },
-};
-
-// Analysis configurations
-const ANALYSIS_CONFIGS = {
-  ndvi: {
-    name: 'NDVI',
-    collection: EARTH_ENGINE_CONFIG.satellites.sentinel2,
-    bands: ['B8', 'B4'],
-    palette: ['#d73027','#f46d43','#fdae61','#fee08b','#e6f598','#abdda4','#66c2a5','#3288bd','#5e4fa2'],
-    min: -1,
-    max: 1,
-  },
-  ndwi: {
-    name: 'NDWI',
-    collection: EARTH_ENGINE_CONFIG.satellites.sentinel2,
-    bands: ['B3', 'B8'],
-    palette: ['#ffffcc','#a1dab4','#41b6c4','#2c7fb8','#253494'],
-    min: -1,
-    max: 1,
-  },
-  temperature: {
-    name: 'Temperature',
-    collection: EARTH_ENGINE_CONFIG.satellites.landsat8,
-    bands: ['ST_B10'],
-    palette: ['#000080','#0000ff','#00ffff','#00ff00','#ffff00','#ff0000','#800000'],
-    min: 0,
-    max: 50,
-  },
-  rgb: {
-    name: 'RGB',
-    collection: EARTH_ENGINE_CONFIG.satellites.sentinel2,
-    bands: ['B4','B3','B2'],
-    min: 0,
-    max: 3000,
-  },
-};
-
-// Earth Engine globals
-let ee: any = null;
-let isEEInitialized = false;
-let initializationPromise: Promise<boolean> | null = null;
-let initializationError: string | null = null;
-
-// Load service account
-function loadServiceAccount(): ServiceAccount {
-  if (!existsSync(EARTH_ENGINE_CONFIG.serviceAccountPath)) {
-    throw new Error(`Service account file not found at ${EARTH_ENGINE_CONFIG.serviceAccountPath}`);
-  }
-  const data = readFileSync(EARTH_ENGINE_CONFIG.serviceAccountPath, 'utf8');
-  const account: ServiceAccount = JSON.parse(data);
-  if (!account.private_key || !account.client_email || !account.project_id) {
-    throw new Error('Invalid service account JSON: missing required fields');
-  }
-  return account;
-}
-
-// Initialize Earth Engine robustly
-async function initializeEarthEngine(retries = 2): Promise<boolean> {
-  if (isEEInitialized) return true;
-  if (initializationError) throw new Error(`Previous initialization failed: ${initializationError}`);
-  if (initializationPromise) return initializationPromise;
-
-  initializationPromise = (async () => {
-    for (let attempt = 1; attempt <= retries + 1; attempt++) {
-      try {
-        ee = require('@google/earthengine');
-        const serviceAccount = loadServiceAccount();
-
-        await new Promise<void>((resolve, reject) => {
-          ee.data.authenticateViaPrivateKey(serviceAccount, () => {
-            ee.initialize(null, null, resolve, reject);
-          }, reject);
-        });
-
-        isEEInitialized = true;
-        log('info', 'Earth Engine initialized successfully');
-        return true;
-      } catch (err) {
-        const message = err instanceof Error ? err.message : 'Unknown EE initialization error';
-        log('error', `EE initialization attempt ${attempt} failed: ${message}`);
-        initializationError = message;
-        initializationPromise = null;
-
-        if (attempt > retries) throw new Error(`EE failed after ${attempt} attempts: ${message}`);
-        log('warn', 'Retrying Earth Engine initialization...');
-        await new Promise(r => setTimeout(r, 2000));
-      }
-    }
-    return false;
-  })();
-
-  return initializationPromise;
-}
-
-// Validate query parameters
-function validateQueryParams(searchParams: URLSearchParams): QueryParams | { error: string } {
-  const lat = searchParams.get('lat');
-  const lng = searchParams.get('lng');
-  const type = searchParams.get('type');
-
-  if (!lat || !lng || !type) return { error: 'Missing required parameters: lat, lng, and type are required' };
-
-  const latitude = parseFloat(lat);
-  const longitude = parseFloat(lng);
-
-  if (isNaN(latitude) || isNaN(longitude)) return { error: 'Invalid coordinates: lat and lng must be numbers' };
-  if (!['ndvi','ndwi','temperature','rgb'].includes(type)) return { error: 'Invalid type parameter' };
-
-  return { lat, lng, type: type as AnalysisType };
-}
-
-// Cache
-const cache = new Map<string, { data: EarthEngineResponse; timestamp: number; hits: number }>();
-const CACHE_DURATION = 10 * 60 * 1000;
-const MAX_CACHE_SIZE = 1000;
-function getCacheKey(lat: string, lng: string, type: AnalysisType): string {
-  const roundedLat = Math.round(parseFloat(lat) * 100) / 100;
-  const roundedLng = Math.round(parseFloat(lng) * 100) / 100;
-  return `${roundedLat}_${roundedLng}_${type}`;
-}
-function getFromCache(key: string): EarthEngineResponse | null {
-  const cached = cache.get(key);
-  if (!cached) return null;
-  if (Date.now() - cached.timestamp > CACHE_DURATION) {
-    cache.delete(key);
-    return null;
-  }
-  cached.hits++;
-  cached.timestamp = Date.now();
-  return cached.data;
-}
-function setCache(key: string, data: EarthEngineResponse) {
-  if (cache.size >= MAX_CACHE_SIZE) {
-    const entries = Array.from(cache.entries()).sort(([,a],[,b])=>b.hits-a.hits);
-    entries.slice(MAX_CACHE_SIZE/2).forEach(([k])=>cache.delete(k));
-  }
-  cache.set(key, { data, timestamp: Date.now(), hits:1 });
-}
-
-// Create Earth Engine analysis
-async function createEarthEngineAnalysis(lat: number, lng: number, analysisType: AnalysisType): Promise<string> {
+export async function POST(req: Request) {
   try {
-    await initializeEarthEngine();
-  } catch (err) {
-    log('error', 'Failed to initialize Earth Engine during analysis', err);
-    throw new Error('Earth Engine not initialized');
-  }
+    const body = await req.json().catch(() => ({}));
+    const { field, question = "", visionMode = false } = body;
 
-  const config = ANALYSIS_CONFIGS[analysisType];
-  const point = ee.Geometry.Point([lng, lat]);
-  const aoi = point.buffer(50000); // 50km buffer
+    if (!field || !field.coordinates?.length) {
+      return NextResponse.json({ answer: "Please draw a field on the map first." });
+    }
 
-  const endDate = new Date();
-  const startDate = new Date();
-  startDate.setMonth(endDate.getMonth() - 6);
+    const center = centroid(field.coordinates);
 
-  let collection = ee.ImageCollection(config.collection)
-    .filterBounds(aoi)
-    .filterDate(startDate.toISOString().split('T')[0], endDate.toISOString().split('T')[0])
-    .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE',30))
-    .sort('CLOUDY_PIXEL_PERCENTAGE');
+    // Handle location Qs directly
+    if (isLocationQuestion(question)) {
+      const place = await reverseGeocode(center.lat, center.lng);
+      return NextResponse.json({ answer: place || `Lat ${center.lat}, Lng ${center.lng}` });
+    }
 
-  const collectionSize = await collection.size().getInfo();
-  if (collectionSize === 0) throw new Error('No satellite imagery found');
+    const placeName = await reverseGeocode(center.lat, center.lng);
+    const fieldSummary = summarizeField(field);
 
-  const image = collection.first();
-  let processedImage: any, visParams: any;
+    const systemInstruction = `
+You are Vision, a helpful farm assistant.
+- For simple factual questions: answer short and clear.
+- For broader farming questions: give a 1-line summary, a short detailed explanation, and 3 simple farmer-friendly actions.
+- Avoid using scientific terms like NDVI/NDWI; instead, describe them as crop health, soil moisture, or plant water needs.
+- If visionMode is true, acknowledge photo/vision analysis (though not implemented here).
+`;
 
-  switch (analysisType) {
-    case 'ndvi':
-      processedImage = image.normalizedDifference(['B8','B4']).rename('NDVI');
-      visParams = { min: config.min, max: config.max, palette: config.palette };
-      break;
-    case 'ndwi':
-      processedImage = image.normalizedDifference(['B3','B8']).rename('NDWI');
-      visParams = { min: config.min, max: config.max, palette: config.palette };
-      break;
-    case 'temperature':
-      const landsatCollection = ee.ImageCollection(EARTH_ENGINE_CONFIG.satellites.landsat8)
-        .filterBounds(aoi)
-        .filterDate(startDate.toISOString().split('T')[0], endDate.toISOString().split('T')[0])
-        .filter(ee.Filter.lt('CLOUD_COVER',30))
-        .sort('CLOUD_COVER');
-      const landsatImage = landsatCollection.first();
-      processedImage = landsatImage.select('ST_B10').multiply(0.00341802).add(149.0).subtract(273.15).rename('Temperature');
-      visParams = { min: config.min, max: config.max, palette: config.palette };
-      break;
-    case 'rgb':
-      processedImage = image.select(['B4','B3','B2']);
-      visParams = { bands:['B4','B3','B2'], min: config.min, max: config.max };
-      break;
-  }
+    const userMessage = `
+Farm context:
+- Location: ${placeName || "Unknown"}
+- Area: ${(field.area / 10000).toFixed(2)} hectares
+- Field conditions: ${fieldSummary}
 
-  const mapId = await new Promise<any>((resolve,reject)=>{
-    const timeout = setTimeout(()=>reject(new Error('Map tile generation timeout')),60000);
-    processedImage.getMap(visParams,(result,error)=>{
-      clearTimeout(timeout);
-      if(error) reject(error);
-      else resolve(result);
+Farmer's question: ${question}
+${visionMode ? "Vision mode: true (photo analysis requested)." : ""}
+`;
+
+    const chat = await groq.chat.completions.create({
+      model: "llama-3.1-8b-instant",
+      messages: [
+        { role: "system", content: systemInstruction },
+        { role: "user", content: userMessage },
+      ],
+      temperature: 0.6,
     });
-  });
 
-  if (!mapId.urlFormat) throw new Error('No tile URL generated');
-  return mapId.urlFormat;
-}
-
-// GET API
-export async function GET(request: NextRequest) {
-  try {
-    const params = validateQueryParams(request.nextUrl.searchParams);
-    if('error' in params) return NextResponse.json({ error: params.error }, { status: 400 });
-
-    const { lat, lng, type } = params;
-    const cacheKey = getCacheKey(lat,lng,type);
-    const cached = getFromCache(cacheKey);
-    if(cached) return NextResponse.json(cached);
-
-    try {
-      const tileUrl = await createEarthEngineAnalysis(parseFloat(lat),parseFloat(lng),type);
-      const response: EarthEngineResponse = { tileUrl };
-      setCache(cacheKey,response);
-      return NextResponse.json(response);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Unknown Earth Engine error';
-      log('error', 'Failed to generate Earth Engine tile', err);
-      return NextResponse.json({ error: message }, { status: 500 });
-    }
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Unknown server error';
-    log('error', 'GET /api/farm-monitor failed', err);
-    return NextResponse.json({ error: message }, { status: 500 });
-  }
-}
-
-// POST health check
-export async function POST(request: NextRequest) {
-  try {
-    const { action } = await request.json();
-    if(action === 'health'){
-      return NextResponse.json({
-        status: isEEInitialized ? 'healthy' : 'initializing',
-        eeInitialized: isEEInitialized,
-        cacheSize: cache.size,
-        uptime: process.uptime(),
-        timestamp: new Date().toISOString()
-      });
-    }
-    return NextResponse.json({ error:'Unknown action'},{status:400});
-  } catch {
-    return NextResponse.json({ error:'Invalid JSON in request body'},{status:400});
+    const answer = chat.choices?.[0]?.message?.content?.trim();
+    return NextResponse.json({ answer: answer || "I couldn't generate an answer." });
+  } catch (err: any) {
+    console.error("farm-monitor route error:", err);
+    return NextResponse.json({ answer: "Server error: " + err.message }, { status: 500 });
   }
 }
