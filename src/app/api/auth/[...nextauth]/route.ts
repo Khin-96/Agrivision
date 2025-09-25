@@ -1,4 +1,4 @@
-import NextAuth from "next-auth";
+import NextAuth, { type NextAuthOptions, type User, type Account, type Session } from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
 import CredentialsProvider from "next-auth/providers/credentials";
 import { PrismaClient } from "@prisma/client";
@@ -9,7 +9,7 @@ const prisma = new PrismaClient();
 // Define the role type locally based on your schema
 type UserRole = "farmer" | "buyer";
 
-const authOptions = {
+const authOptions: NextAuthOptions = {
   providers: [
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID!,
@@ -53,11 +53,12 @@ const authOptions = {
   ],
 
   callbacks: {
-    async signIn({ user, account }) {
+    // ✅ Typed params here
+    async signIn({ user, account }: { user: User; account: Account | null }) {
       if (account?.provider === "google") {
         try {
           let selectedRole: UserRole = "buyer";
-          if (account.callbackUrl) {
+          if (account?.callbackUrl) {
             try {
               const url = new URL(account.callbackUrl);
               const roleParam = url.searchParams.get("role");
@@ -100,26 +101,26 @@ const authOptions = {
 
     async jwt({ token, user }) {
       if (user) {
-        token.id = user.id;
-        token.role = user.role;
-        token.idVerified = user.idVerified;
-        token.image = user.image;
-        token.idFrontUrl = user.idFrontUrl;
-        token.idBackUrl = user.idBackUrl;
-        token.idType = user.idType;
+        token.id = (user as any).id;
+        token.role = (user as any).role;
+        token.idVerified = (user as any).idVerified;
+        token.image = (user as any).image;
+        token.idFrontUrl = (user as any).idFrontUrl;
+        token.idBackUrl = (user as any).idBackUrl;
+        token.idType = (user as any).idType;
       }
       return token;
     },
 
     async session({ session, token }) {
       if (token) {
-        session.user.id = token.id as string;
-        session.user.role = token.role as UserRole;
-        session.user.idVerified = token.idVerified as boolean;
-        session.user.image = token.image as string | null;
-        session.user.idFrontUrl = token.idFrontUrl as string | null;
-        session.user.idBackUrl = token.idBackUrl as string | null;
-        session.user.idType = token.idType as string | null;
+        (session.user as any).id = token.id as string;
+        (session.user as any).role = token.role as UserRole;
+        (session.user as any).idVerified = token.idVerified as boolean;
+        (session.user as any).image = token.image as string | null;
+        (session.user as any).idFrontUrl = token.idFrontUrl as string | null;
+        (session.user as any).idBackUrl = token.idBackUrl as string | null;
+        (session.user as any).idType = token.idType as string | null;
       }
       return session;
     },
@@ -137,7 +138,7 @@ const authOptions = {
   },
 
   session: {
-    strategy: "jwt" as const,
+    strategy: "jwt",
     maxAge: 30 * 24 * 60 * 60,
   },
 };
