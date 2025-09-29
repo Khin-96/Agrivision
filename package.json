@@ -33,6 +33,7 @@
     "dotenv": "^17.2.2",
     "framer-motion": "^12.23.22",
     "google-auth-library": "^10.3.0",
+    "groq-js": "^1.19.0",
     "groq-sdk": "^0.32.0",
     "html2canvas": "^1.4.1",
     "ioredis": "^5.8.0",
