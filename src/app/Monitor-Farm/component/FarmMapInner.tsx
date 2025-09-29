@@ -10,6 +10,7 @@ import {
   Autocomplete,
 } from "@react-google-maps/api";
 import { motion, AnimatePresence } from "framer-motion";
+import { MessageCircle, Minus, X, Bot } from "lucide-react";
 
 interface Field {
   id: string;
@@ -36,6 +37,12 @@ interface Message {
   content: string;
 }
 
+interface SuggestionBubble {
+  id: string;
+  text: string;
+  question: string;
+}
+
 export default function FarmMapInner() {
   const { isLoaded } = useJsApiLoader({
     id: "google-map-script",
@@ -54,26 +61,36 @@ export default function FarmMapInner() {
   const [isLoading, setIsLoading] = useState(false);
   const [hoveredField, setHoveredField] = useState<Field | null>(null);
   const [chatMinimized, setChatMinimized] = useState(false);
-  const [chatVisible, setChatVisible] = useState(true);
+  const [currentSuggestionIndex, setCurrentSuggestionIndex] = useState(0);
 
   const [searchInput, setSearchInput] = useState("");
   const [autocompleteSuggestions, setAutocompleteSuggestions] = useState<google.maps.places.AutocompletePrediction[]>([]);
   const serviceRef = useRef<google.maps.places.AutocompleteService | null>(null);
+
+  // Suggestion bubbles that cycle through
+  const suggestionBubbles: SuggestionBubble[] = [
+    { id: "1", text: "🌱 Need crop tips?", question: "How can I improve my crop health?" },
+    { id: "2", text: "🌤️ Check weather?", question: "What's the weather forecast for my field?" },
+    { id: "3", text: "💧 Water advice?", question: "How much should I water my crops?" },
+    { id: "4", text: "🌿 Crop health?", question: "How are my crops doing?" },
+    { id: "5", text: "📍 Field location?", question: "Where is this field located?" },
+  ];
 
   // Auto-scroll chat
   useEffect(() => {
     chatRef.current?.scrollTo({ top: chatRef.current.scrollHeight, behavior: "smooth" });
   }, [messages]);
 
-  // Auto-hide chat after 10s when minimized
+  // Cycle through suggestion bubbles when minimized
   useEffect(() => {
     if (chatMinimized) {
-      const timer = setTimeout(() => setChatVisible(false), 10000);
-      return () => clearTimeout(timer);
-    } else {
-      setChatVisible(true);
+      const interval = setInterval(() => {
+        setCurrentSuggestionIndex((prev) => (prev + 1) % suggestionBubbles.length);
+      }, 4000); // Change every 4 seconds
+
+      return () => clearInterval(interval);
     }
-  }, [chatMinimized]);
+  }, [chatMinimized, suggestionBubbles.length]);
 
   // Initialize Autocomplete Service
   useEffect(() => {
@@ -213,7 +230,16 @@ export default function FarmMapInner() {
     }
   };
 
-  const quickQuestion = (question: string) => setInput(question);
+  const quickQuestion = (question: string) => {
+    setInput(question);
+    // Auto-send if there's a question
+    if (question.trim()) {
+      setTimeout(() => {
+        const sendButton = document.querySelector('button[onClick*="sendMessage"]') as HTMLButtonElement;
+        if (sendButton) sendButton.click();
+      }, 100);
+    }
+  };
 
   const handleSuggestionClick = (suggestion: google.maps.places.AutocompletePrediction) => {
     const geocoder = new google.maps.Geocoder();
@@ -321,24 +347,25 @@ export default function FarmMapInner() {
           )}
         </AnimatePresence>
 
-        {/* Search Bar */}
-        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-50 w-96">
+        {/* Search Bar - Updated with translucent background */}
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50 w-96">
           <input
             type="text"
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
             placeholder="Search places..."
-            className="w-full px-4 py-2 rounded-lg shadow-lg text-black"
+            className="w-full px-4 py-3 rounded-lg shadow-lg text-black bg-white/90 backdrop-blur-sm border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
           />
           {searchInput && autocompleteSuggestions.length > 0 && (
-            <div className="bg-white rounded-lg mt-1 max-h-60 overflow-y-auto shadow-lg z-50">
+            <div className="bg-white/95 backdrop-blur-sm rounded-lg mt-1 max-h-60 overflow-y-auto shadow-lg z-50 border border-gray-200">
               {autocompleteSuggestions.map((s, i) => (
                 <div
                   key={i}
-                  className="px-4 py-2 cursor-pointer hover:bg-gray-200 transition-all"
+                  className="px-4 py-3 cursor-pointer hover:bg-gray-100 transition-all border-b border-gray-100 last:border-b-0 text-black"
                   onClick={() => handleSuggestionClick(s)}
                 >
-                  {s.description}
+                  <div className="font-medium text-sm">{s.structured_formatting.main_text}</div>
+                  <div className="text-xs text-gray-600">{s.structured_formatting.secondary_text}</div>
                 </div>
               ))}
             </div>
@@ -387,102 +414,163 @@ export default function FarmMapInner() {
         )}
       </AnimatePresence>
 
-      {/* Chat Panel */}
+      {/* Floating Avatar when minimized - Now draggable */}
       <AnimatePresence>
-        {chatVisible && (
+        {chatMinimized && (
           <motion.div
-            initial={{ opacity: 0, x: 50 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: 50 }}
-            className={`absolute top-0 bottom-0 right-4 w-96 flex flex-col z-50 shadow-lg transition-all duration-300 ${
-              chatMinimized ? "h-12" : "h-full"
-            }`}
+            drag
+            dragConstraints={{ 
+              top: 0, 
+              left: 0, 
+              right: typeof window !== 'undefined' ? window.innerWidth - 100 : 1000, 
+              bottom: typeof window !== 'undefined' ? window.innerHeight - 100 : 1000 
+            }}
+            dragElastic={0.1}
+            initial={{ opacity: 0, scale: 0.8 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.8 }}
+            className="fixed bottom-6 right-6 z-50 cursor-grab active:cursor-grabbing"
           >
-            {/* Header */}
-            <div
-              className="flex justify-between items-center px-3 py-2 bg-black/70 text-white rounded-t-xl cursor-pointer"
-              onClick={() => setChatMinimized(!chatMinimized)}
-            >
-              <span>💬 Farm AI</span>
-              <button className="text-sm">{chatMinimized ? "⬆️" : "⬇️"}</button>
-            </div>
-
-            {/* Floating Icon when minimized */}
-            {chatMinimized && (
-              <div
-                className="absolute -left-12 top-0 bg-blue-600 text-white p-2 rounded-full cursor-pointer shadow-lg"
-                onClick={() => setChatMinimized(false)}
+            {/* Suggestion Bubble */}
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={currentSuggestionIndex}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                className="absolute bottom-16 right-0 bg-white/95 backdrop-blur-sm text-black px-4 py-2 rounded-lg shadow-lg max-w-xs mb-2 border border-gray-200"
               >
-                💬
-              </div>
-            )}
-
-            {!chatMinimized && (
-              <>
-                {/* Messages */}
-                <div
-                  ref={chatRef}
-                  className="flex-1 overflow-y-auto px-4 py-3 bg-black/40 text-white"
-                >
-                  {messages.length === 0 ? (
-                    <p className="text-gray-200 text-sm">Ask about your farm... 🌱</p>
-                  ) : (
-                    messages.map((m, i) => (
-                      <div
-                        key={i}
-                        className={`mb-2 max-w-[85%] px-3 py-2 rounded-lg transition-all duration-200 ${
-                          m.role === "assistant"
-                            ? "bg-green-600 text-white ml-auto"
-                            : "bg-black text-white mr-auto"
-                        }`}
-                      >
-                        <b>{m.role === "user" ? "👤 You: " : "🤖 Bot: "}</b>
-                        {m.content}
-                      </div>
-                    ))
-                  )}
-                  {isLoading && <div className="text-gray-200">Thinking...</div>}
+                <div className="text-sm font-medium">
+                  {suggestionBubbles[currentSuggestionIndex].text}
                 </div>
+                <div className="w-3 h-3 bg-white/95 absolute -bottom-1 right-4 rotate-45 border-b border-r border-gray-200"></div>
+              </motion.div>
+            </AnimatePresence>
 
-                {/* Quick questions */}
-                <div className="flex flex-wrap gap-2 px-3 py-2 bg-black/50">
-                  {[
-                    { label: "📍 Location", question: "Where is this field located?" },
-                    { label: "🌱 Crop Health", question: "How are my crops doing?" },
-                    { label: "🌤️ Weather", question: "Hali ya hewa leo?" },
-                    { label: "🌿 Mazao", question: "Mazao yangu yakoje?" },
-                  ].map((q, idx) => (
-                    <button
-                      key={idx}
-                      onClick={() => quickQuestion(q.question)}
-                      className="text-xs bg-white/20 text-white px-3 py-1 rounded-lg hover:bg-white/30 transition-all duration-150"
-                    >
-                      {q.label}
-                    </button>
-                  ))}
-                </div>
-
-                {/* Input */}
-                <div className="flex gap-2 px-3 py-2 bg-white/90 rounded-b-xl">
-                  <input
-                    value={input}
-                    onChange={(e) => setInput(e.target.value)}
-                    placeholder="Ask a question..."
-                    className="flex-1 rounded px-3 py-2 text-black"
-                    onKeyDown={(e) => e.key === "Enter" && sendMessage()}
-                  />
-                  <button
-                    onClick={sendMessage}
-                    className="bg-blue-600 text-white px-4 py-2 rounded-lg"
-                  >
-                    Send
-                  </button>
-                </div>
-              </>
-            )}
+            {/* Avatar Image */}
+            <motion.button
+              whileHover={{ scale: 1.1 }}
+              whileTap={{ scale: 0.9 }}
+              onClick={() => setChatMinimized(false)}
+              className="bg-transparent p-0 rounded-full shadow-lg hover:shadow-xl transition-all"
+            >
+              <img 
+                src="/avatar.png" 
+                alt="Farm AI Assistant"
+                className="w-14 h-14 rounded-full object-cover border-2 border-white/80 shadow-lg"
+              />
+            </motion.button>
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Docked Chat Panel - Updated to fit within map boundaries */}
+      <motion.div
+        initial={{ x: 400 }}
+        animate={{ x: chatMinimized ? 400 : 0 }}
+        transition={{ type: "spring", damping: 25 }}
+        className="absolute right-0 top-0 bottom-0 w-96 z-50 flex flex-col bg-black/80 backdrop-blur-md shadow-2xl border-l border-white/20"
+        style={{ height: '100%' }}
+      >
+        {/* Header */}
+        <div className="flex justify-between items-center px-4 py-3 bg-gradient-to-r from-green-600/80 to-blue-600/80 text-white">
+          <div className="flex items-center gap-2">
+            <Bot size={20} />
+            <span className="font-semibold">Farm AI Assistant</span>
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setChatMinimized(true)}
+              className="p-1 hover:bg-white/20 rounded transition-colors"
+              title="Minimize"
+            >
+              <Minus size={16} />
+            </button>
+          </div>
+        </div>
+
+        {/* Messages */}
+        <div
+          ref={chatRef}
+          className="flex-1 overflow-y-auto p-4 space-y-3"
+        >
+          {messages.length === 0 ? (
+            <div className="text-center text-gray-300 mt-8">
+              <MessageCircle size={48} className="mx-auto mb-3 text-gray-400/70" />
+              <p className="text-sm">Ask me about your farm, crops, or weather!</p>
+            </div>
+          ) : (
+            messages.map((m, i) => (
+              <div
+                key={i}
+                className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}
+              >
+                <div
+                  className={`max-w-[80%] px-3 py-2 rounded-lg ${
+                    m.role === "user"
+                      ? "bg-blue-600/80 text-white rounded-br-none backdrop-blur-sm"
+                      : "bg-gray-800/70 text-gray-200 rounded-bl-none backdrop-blur-sm"
+                  }`}
+                >
+                  <div className="text-sm">{m.content}</div>
+                </div>
+              </div>
+            ))
+          )}
+          {isLoading && (
+            <div className="flex justify-start">
+              <div className="bg-gray-800/70 text-gray-200 px-3 py-2 rounded-lg rounded-bl-none backdrop-blur-sm">
+                <div className="flex items-center gap-2">
+                  <div className="flex gap-1">
+                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
+                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
+                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+                  </div>
+                  <span className="text-sm">Thinking...</span>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Quick Questions */}
+        <div className="px-4 py-3 border-t border-white/20">
+          <div className="flex flex-wrap gap-2 mb-3">
+            {[
+              { label: "🌱 Crop Health", question: "How are my crops doing?" },
+              { label: "🌤️ Weather", question: "What's the weather forecast?" },
+              { label: "💧 Water Advice", question: "How much should I water my crops?" },
+              { label: "📍 Location", question: "Where is this field located?" },
+            ].map((q, idx) => (
+              <button
+                key={idx}
+                onClick={() => quickQuestion(q.question)}
+                className="text-xs bg-gray-800/50 hover:bg-gray-700/70 text-gray-200 px-3 py-2 rounded-full transition-all duration-150 backdrop-blur-sm"
+              >
+                {q.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Input Area */}
+          <div className="flex gap-2">
+            <input
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder="Ask about your farm..."
+              className="flex-1 border border-white/30 bg-black/40 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 backdrop-blur-sm placeholder-gray-400"
+              onKeyDown={(e) => e.key === "Enter" && sendMessage()}
+            />
+            <button
+              onClick={sendMessage}
+              disabled={isLoading}
+              className="bg-blue-600/80 text-white px-4 py-2 rounded-lg hover:bg-blue-700/80 disabled:opacity-50 transition-colors backdrop-blur-sm"
+            >
+              Send
+            </button>
+          </div>
+        </div>
+      </motion.div>
     </div>
   );
 }
