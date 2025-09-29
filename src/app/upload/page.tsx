@@ -358,17 +358,6 @@ export default function UploadPage() {
             />
           </div>
         )}
-
-        {/* Debug Information (Remove in production) */}
-        {process.env.NODE_ENV === 'development' && (
-          <div className="fixed bottom-4 left-4 bg-gray-800 text-white p-4 rounded-lg max-w-sm text-xs">
-            <h4 className="font-bold mb-2">Debug Info:</h4>
-            <p>Context Length: {pageState.visionContext.length}</p>
-            <p>Analysis: {pageState.currentAnalysis ? 'Yes' : 'No'}</p>
-            <p>Vision Open: {pageState.showVision ? 'Yes' : 'No'}</p>
-            <p>Language: {pageState.language}</p>
-          </div>
-        )}
       </div>
     </Layout>
   );
