@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { analyzeImage, analyzeContent } from '@/lib/gemini'; // Import both functions
+import { analyzeImage, analyzeVideo, analyzeContent } from '@/lib/gemini';
 import { writeFile, mkdir } from 'fs/promises';
 import { join } from 'path';
 import { existsSync } from 'fs';
@@ -83,22 +83,25 @@ export async function POST(request: NextRequest): Promise<NextResponse<AnalysisR
       const buffer = Buffer.from(bytes);
       await writeFile(filePath, buffer);
 
-      // Analyze the content with Gemini AI
+      // Analyze the content with Gemini AI based on type
       let analysisResult;
       
       if (type === 'image') {
-        // Use analyzeImage for images
+        console.log('Analyzing image with Gemini...');
         analysisResult = await analyzeImage(file);
+      } else if (type === 'video') {
+        console.log('Analyzing video with Gemini...');
+        analysisResult = await analyzeVideo(file);
       } else {
-        // For video, we need to handle it differently
-        // Since Gemini may not support direct video analysis, we can:
-        // 1. Extract a frame from the video (requires additional processing)
-        // 2. Or use a different approach
-        
-        // For now, let's use the analyzeContent function which handles both
-        // Note: You may need to modify your gemini.ts to handle video files properly
-        analysisResult = await analyzeContent(file, 'image');
+        throw new Error(`Unsupported type: ${type}`);
       }
+
+      console.log('Analysis completed successfully:', {
+        filename: file.name,
+        type,
+        categoriesCount: analysisResult.categories?.length || 0,
+        suggestionsCount: analysisResult.suggestions?.length || 0
+      });
 
       // Return successful response with structured data
       return NextResponse.json({
@@ -113,56 +116,68 @@ export async function POST(request: NextRequest): Promise<NextResponse<AnalysisR
       });
 
     } catch (fileError) {
-      console.error('File operation error:', fileError);
+      console.error('File operation or analysis error:', fileError);
+      
+      // Handle specific analysis errors
+      if (fileError instanceof Error) {
+        if (fileError.message.includes('API key')) {
+          return NextResponse.json(
+            { 
+              success: false, 
+              error: 'AI service configuration error. Please check API settings.' 
+            },
+            { status: 500 }
+          );
+        }
+        
+        if (fileError.message.includes('quota') || fileError.message.includes('limit')) {
+          return NextResponse.json(
+            { 
+              success: false, 
+              error: 'AI service temporarily unavailable due to quota limits. Please try again later.' 
+            },
+            { status: 503 }
+          );
+        }
+        
+        if (fileError.message.includes('File size') || fileError.message.includes('too large')) {
+          return NextResponse.json(
+            { 
+              success: false, 
+              error: `${type === 'video' ? 'Video' : 'Image'} file too large. Please use a smaller file.` 
+            },
+            { status: 400 }
+          );
+        }
+      }
+      
       return NextResponse.json(
         { 
           success: false, 
-          error: 'Failed to save or analyze file. Please try again.' 
+          error: `Failed to analyze ${type}. Please try again.` 
         },
         { status: 500 }
       );
     }
 
-  } catch (analysisError) {
-    console.error('Analysis error:', analysisError);
+  } catch (requestError) {
+    console.error('Request processing error:', requestError);
 
-    // Handle specific error types
-    if (analysisError instanceof Error) {
-      if (analysisError.message.includes('API key')) {
-        return NextResponse.json(
-          { 
-            success: false, 
-            error: 'AI analysis service configuration error. Please check API settings.' 
-          },
-          { status: 500 }
-        );
-      }
-      
-      if (analysisError.message.includes('quota') || analysisError.message.includes('limit')) {
-        return NextResponse.json(
-          { 
-            success: false, 
-            error: 'AI analysis service temporarily unavailable. Please try again later.' 
-          },
-          { status: 503 }
-        );
-      }
-      
-      if (analysisError.message.includes('video') || analysisError.message.includes('Video')) {
-        return NextResponse.json(
-          { 
-            success: false, 
-            error: 'Video analysis requires additional processing. Please try with an image instead.' 
-          },
-          { status: 400 }
-        );
-      }
+    // Handle request-level errors
+    if (requestError instanceof Error) {
+      return NextResponse.json(
+        { 
+          success: false, 
+          error: requestError.message || 'Failed to process request. Please try again.' 
+        },
+        { status: 500 }
+      );
     }
 
     return NextResponse.json(
       { 
         success: false, 
-        error: 'Failed to analyze content. Please try again.' 
+        error: 'An unexpected error occurred. Please try again.' 
       },
       { status: 500 }
     );
@@ -172,14 +187,14 @@ export async function POST(request: NextRequest): Promise<NextResponse<AnalysisR
 // Handle unsupported HTTP methods
 export async function GET(): Promise<NextResponse> {
   return NextResponse.json(
-    { success: false, error: 'Method not allowed' },
+    { success: false, error: 'Method not allowed. Use POST to upload files.' },
     { status: 405 }
   );
 }
 
 export async function PUT(): Promise<NextResponse> {
   return NextResponse.json(
-    { success: false, error: 'Method not allowed' },
+    { success: false, error: 'Method not allowed. Use POST to upload files.' },
     { status: 405 }
   );
 }

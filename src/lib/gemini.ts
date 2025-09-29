@@ -32,7 +32,7 @@ const DEFAULT_CONFIG: GeminiConfig = {
   temperature: 0.4,
   topP: 0.8,
   topK: 40,
-  maxOutputTokens: 2000, // Increased for more comprehensive analysis
+  maxOutputTokens: 2000,
 };
 
 // Safety settings for content analysis
@@ -86,7 +86,12 @@ function getMimeType(file: File): string {
 
 // Enhanced prompt for comprehensive agricultural analysis
 function generatePrompt(type: 'image' | 'video', filename: string): string {
-  const basePrompt = `You are an expert agricultural AI assistant with knowledge in all farming domains including crops, livestock, horticulture, floriculture, aquaculture, and more. Analyze this ${type} comprehensively and provide a detailed, well-structured analysis without any markdown formatting.
+  const mediaType = type === 'video' ? 'video footage' : 'image';
+  const additionalVideoInstructions = type === 'video' 
+    ? '\n\nFor video content, analyze multiple frames and temporal aspects:\n- Movement patterns and behaviors\n- Changes over time\n- Sequential activities or processes\n- Dynamic conditions (weather changes, animal movements, growth progression)'
+    : '';
+
+  const basePrompt = `You are an expert agricultural AI assistant with knowledge in all farming domains including crops, livestock, horticulture, floriculture, aquaculture, and more. Analyze this ${mediaType} comprehensively and provide a detailed, well-structured analysis without any markdown formatting.${additionalVideoInstructions}
 
 ANALYSIS FORMAT:
 Identification: [Identify the subject - plant, animal, fish, etc.]
@@ -234,8 +239,9 @@ export async function analyzeImage(
 ): Promise<GeminiAnalysisResult> {
   try {
     const genAI = initializeGemini();
+    // Use gemini-2.0-flash-exp for fast, reliable image analysis
     const model = genAI.getGenerativeModel({ 
-      model: "gemini-1.5-flash",
+      model: "gemini-2.0-flash-exp",
       generationConfig: config,
       safetySettings: SAFETY_SETTINGS
     });
@@ -283,6 +289,69 @@ export async function analyzeImage(
   }
 }
 
+// Analyze video content with Gemini
+export async function analyzeVideo(
+  file: File,
+  config: GeminiConfig = DEFAULT_CONFIG
+): Promise<GeminiAnalysisResult> {
+  try {
+    const genAI = initializeGemini();
+    // Use gemini-2.0-flash-exp for video analysis
+    const model = genAI.getGenerativeModel({ 
+      model: "gemini-2.0-flash-exp",
+      generationConfig: {
+        ...config,
+        maxOutputTokens: 3000, // Increase for video analysis
+      },
+      safetySettings: SAFETY_SETTINGS
+    });
+
+    const base64Data = await fileToBase64(file);
+    const mimeType = getMimeType(file);
+    const filename = file.name;
+    
+    const videoParts = [
+      {
+        inlineData: {
+          data: base64Data,
+          mimeType: mimeType,
+        },
+      },
+    ];
+
+    const prompt = generatePrompt('video', filename);
+    
+    const result = await model.generateContent([prompt, ...videoParts]);
+    const response = await result.response;
+    const analysis = response.text();
+
+    if (!analysis || analysis.trim().length === 0) {
+      throw new Error('Empty response from Gemini API');
+    }
+
+    const cleanedAnalysis = cleanAnalysisText(analysis.trim());
+    return parseAnalysisResult(cleanedAnalysis);
+
+  } catch (error) {
+    console.error('Gemini video analysis error:', error);
+    
+    if (error instanceof Error) {
+      if (error.message.includes('API key')) {
+        throw new Error('Invalid or missing Gemini API key');
+      }
+      if (error.message.includes('quota') || error.message.includes('limit')) {
+        throw new Error('Gemini API quota exceeded');
+      }
+      if (error.message.includes('File size')) {
+        throw new Error('Video file too large. Please use a smaller video (max 50MB)');
+      }
+      throw error;
+    }
+    
+    throw new Error('Failed to analyze video with Gemini AI');
+  }
+}
+
 // Analyze text content with Gemini (for ID verification and text-based queries)
 export async function analyzeText(
   text: string,
@@ -291,7 +360,7 @@ export async function analyzeText(
   try {
     const genAI = initializeGemini();
     const model = genAI.getGenerativeModel({ 
-      model: "gemini-pro",
+      model: "gemini-2.0-flash-exp",
       generationConfig: config,
       safetySettings: SAFETY_SETTINGS
     });
@@ -356,12 +425,14 @@ Information to analyze: ${text}`;
 // Main analysis function that determines content type and calls appropriate analyzer
 export async function analyzeContent(
   content: File | string,
-  type: 'image' | 'text',
+  type: 'image' | 'video' | 'text',
   config?: GeminiConfig
 ): Promise<GeminiAnalysisResult> {
   try {
     if (type === 'image' && content instanceof File) {
       return await analyzeImage(content, config);
+    } else if (type === 'video' && content instanceof File) {
+      return await analyzeVideo(content, config);
     } else if (type === 'text' && typeof content === 'string') {
       return await analyzeText(content, config);
     } else {
