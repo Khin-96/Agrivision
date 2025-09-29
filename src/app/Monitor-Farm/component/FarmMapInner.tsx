@@ -347,8 +347,8 @@ export default function FarmMapInner() {
           )}
         </AnimatePresence>
 
-        {/* Search Bar - Updated with translucent background */}
-        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50 w-96">
+        {/* Search Bar - Back to bottom with improved styling */}
+        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-50 w-96">
           <input
             type="text"
             value={searchInput}
