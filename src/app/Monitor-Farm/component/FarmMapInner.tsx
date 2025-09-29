@@ -469,7 +469,7 @@ export default function FarmMapInner() {
         initial={{ x: 400 }}
         animate={{ x: chatMinimized ? 400 : 0 }}
         transition={{ type: "spring", damping: 25 }}
-        className="absolute right-0 top-0 bottom-0 w-96 z-50 flex flex-col bg-black/80 backdrop-blur-md shadow-2xl border-l border-white/20"
+        className="absolute right-0 top-0 bottom-0 w-96 z-50 flex flex-col bg-black/40 shadow-2xl border-l border-white/20"
         style={{ height: '100%' }}
       >
         {/* Header */}
