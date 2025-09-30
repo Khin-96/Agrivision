@@ -80,6 +80,7 @@ model Product {
   images      Json
   available   Boolean  @default(true)
   farmerId    String
+  status      String   @default("Available")
   farmer      User     @relation(fields: [farmerId], references: [id])
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt

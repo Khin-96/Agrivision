@@ -269,13 +269,13 @@ export default function Home() {
           </h2>
           <p className="mt-4 text-lg leading-6 text-green-200">
             Join thousands of farmers and gardeners who are using AgriVision to
-            keep their plants healthy.
+            keep Monitor their Farms.
           </p>
           <Link
-            href="/upload"
+            href="/Monitor-Farm"
             className="mt-8 w-full inline-flex items-center justify-center px-5 py-3 border border-transparent text-base font-medium rounded-md text-green-700 bg-white hover:bg-green-50 sm:w-auto"
           >
-            Upload Image
+            Monitor Farm
           </Link>
         </div>
       </div>

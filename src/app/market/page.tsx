@@ -1,3 +1,5 @@
+//src/app/market/page.tsx
+
 'use client';
 
 import Layout from '@/components/layout/Layout';

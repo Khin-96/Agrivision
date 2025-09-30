@@ -1,4 +1,4 @@
-// lib/auth.ts
+// src/lib/auth.ts
 import { NextAuthOptions } from 'next-auth';
 import GoogleProvider from 'next-auth/providers/google';
 import CredentialsProvider from 'next-auth/providers/credentials';
@@ -9,13 +9,10 @@ import bcrypt from 'bcryptjs';
 export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(prisma),
   providers: [
-    // --- Google OAuth provider ---
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID!,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
     }),
-
-    // --- Email + Password credentials provider ---
     CredentialsProvider({
       name: "credentials",
       credentials: {
@@ -36,7 +33,6 @@ export const authOptions: NextAuthOptions = {
         );
         if (!isPasswordValid) return null;
 
-        // ✅ return only safe fields
         return {
           id: user.id,
           email: user.email,
@@ -53,16 +49,11 @@ export const authOptions: NextAuthOptions = {
   ],
 
   callbacks: {
-    /**
-     * signIn callback: ensures a User exists in Prisma
-     */
     async signIn({ user, account }) {
       if (account?.provider === "google") {
         try {
-          // Default role
           let selectedRole: "buyer" | "farmer" = "buyer";
 
-          // Try extracting ?role=farmer from callbackUrl
           if (account.callbackUrl) {
             try {
               const url = new URL(account.callbackUrl);
@@ -75,7 +66,6 @@ export const authOptions: NextAuthOptions = {
             }
           }
 
-          // Ensure Prisma user exists
           const existingUser = await prisma.user.findUnique({
             where: { email: user.email! },
           });
@@ -95,21 +85,17 @@ export const authOptions: NextAuthOptions = {
 
           return true;
         } catch (error) {
-          console.error("❌ Google sign-in error:", error);
+          console.error("Google sign-in error:", error);
           return false;
         }
       }
 
-      return true; // Allow credentials login
+      return true;
     },
 
-    /**
-     * jwt callback: attach Prisma user.id (not providerAccountId!)
-     */
     async jwt({ token, user }) {
       try {
         if (user) {
-          // When user signs in for the first time
           token.id = user.id;
           token.role = user.role;
           token.idVerified = user.idVerified;
@@ -118,13 +104,12 @@ export const authOptions: NextAuthOptions = {
           token.idBackUrl = user.idBackUrl;
           token.idType = user.idType;
         } else if (token.email) {
-          // On subsequent requests, fetch Prisma user by email
           const dbUser = await prisma.user.findUnique({
             where: { email: token.email as string },
           });
 
           if (dbUser) {
-            token.id = dbUser.id; // ✅ always ensure Prisma cuid is used
+            token.id = dbUser.id;
             token.role = dbUser.role;
             token.idVerified = dbUser.idVerified;
             token.image = dbUser.image;
@@ -134,15 +119,12 @@ export const authOptions: NextAuthOptions = {
           }
         }
       } catch (err) {
-        console.error("❌ JWT callback error:", err);
+        console.error("JWT callback error:", err);
       }
 
       return token;
     },
 
-    /**
-     * session callback: expose fields to client session
-     */
     async session({ session, token }) {
       try {
         if (token && session.user) {
@@ -155,19 +137,16 @@ export const authOptions: NextAuthOptions = {
           session.user.idType = token.idType as string | null;
         }
       } catch (err) {
-        console.error("❌ Session callback error:", err);
+        console.error("Session callback error:", err);
       }
 
       return session;
     },
 
-    /**
-     * redirect callback: normalize URLs
-     */
     async redirect({ url, baseUrl }) {
       if (url.startsWith("/")) return `${baseUrl}${url}`;
       else if (new URL(url).origin === baseUrl) return url;
-      return `${baseUrl}/market`; // default
+      return `${baseUrl}/market`;
     },
   },
 
@@ -178,6 +157,6 @@ export const authOptions: NextAuthOptions = {
 
   session: {
     strategy: "jwt",
-    maxAge: 30 * 24 * 60 * 60, // 30 days
+    maxAge: 30 * 24 * 60 * 60,
   },
 };

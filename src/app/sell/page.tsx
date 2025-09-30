@@ -19,6 +19,7 @@ interface Product {
   unit: string;
   status: string;
   images: string[];
+  available: boolean;
 }
 
 export default function SellPage() {
@@ -138,7 +139,7 @@ export default function SellPage() {
       return;
     }
 
-    if (images.length === 0) {
+    if (images.length === 0 && imagePreviews.length === 0) {
       toast.error('Please upload at least one image');
       return;
     }
@@ -184,6 +185,9 @@ export default function SellPage() {
         }
       }
 
+      // Determine availability based on status and quantity
+      const isAvailable = formData.status === 'Available' && formData.quantity > 0;
+
       let response;
       if (editingProductId) {
         // Update existing product
@@ -198,8 +202,9 @@ export default function SellPage() {
             category: formData.category,
             quantity: formData.quantity,
             unit: formData.unit,
-            images: imageUrls,
-            available: formData.status === 'Available'
+            images: imageUrls.length > 0 ? imageUrls : imagePreviews,
+            available: isAvailable,
+            status: formData.status
           }),
         });
       } else {
@@ -215,9 +220,8 @@ export default function SellPage() {
             quantity: formData.quantity,
             unit: formData.unit,
             images: imageUrls,
-            //farmerId: user.id,
-            //farmerName: user.name,
-            available: formData.status === 'Available',
+            available: isAvailable,
+            status: formData.status,
             rating: 0,
             reviews: 0
           }),
@@ -259,7 +263,7 @@ export default function SellPage() {
       category: product.category,
       quantity: product.quantity,
       unit: product.unit,
-      status: product.status,
+      status: product.status || (product.available ? 'Available' : 'Out of Stock'),
     });
     setImagePreviews(product.images);
     setImages([]); // Will upload new images if changed
@@ -308,6 +312,16 @@ export default function SellPage() {
                     <p className="text-sm text-gray-600 mt-1">{product.category}</p>
                     <p className="text-gray-900 font-semibold mt-2">${product.price}/{product.unit}</p>
                     <p className="text-gray-600 text-sm mt-1 line-clamp-2">{product.description}</p>
+                    <span className={`mt-2 px-2 py-1 rounded-full text-xs font-semibold w-fit ${
+                      product.status === 'Available' ? 'bg-green-100 text-green-800' :
+                      product.status === 'Out of Stock' ? 'bg-red-100 text-red-700' :
+                      product.status === 'Restocked' ? 'bg-blue-100 text-blue-700' :
+                      product.status === 'Limited' ? 'bg-yellow-100 text-yellow-700' :
+                      product.status === 'Coming Soon' ? 'bg-purple-100 text-purple-700' :
+                      'bg-gray-100 text-gray-700'
+                    }`}>
+                      {product.status}
+                    </span>
                   </div>
                   <div className="absolute top-2 right-2 flex gap-2">
                     <button onClick={() => handleEdit(product)} className="bg-blue-500 text-white p-1 rounded hover:bg-blue-600">
@@ -337,43 +351,30 @@ export default function SellPage() {
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="bg-white border border-gray-200 p-8 rounded-2xl shadow-lg space-y-6">
-            {/* Product Name */}
-            <div>
-              <label className="text-gray-700 block mb-2 font-medium">Product Name</label>
-              <input type="text" name="name" value={formData.name} onChange={handleInputChange} placeholder="Enter product name" required
-                className="w-full p-3 rounded-lg border border-gray-300 bg-gray-100 text-gray-900 focus:outline-none focus:ring-2 focus:ring-green-500"/>
-            </div>
-
-            {/* Description */}
-            <div>
-              <label className="text-gray-700 block mb-2 font-medium">Description</label>
-              <textarea name="description" value={formData.description} onChange={handleInputChange} rows={4} placeholder="Describe your product" required
-                className="w-full p-3 rounded-lg border border-gray-300 bg-gray-100 text-gray-900 focus:outline-none focus:ring-2 focus:ring-green-500"/>
-            </div>
-
-            {/* Price, Quantity, Unit, Category, Status */}
+          <form onSubmit={handleSubmit} className="bg-white border border-gray-200 p-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
-                <label className="text-gray-700 block mb-2 font-medium">Price</label>
-                <input type="number" name="price" value={formData.price} onChange={handleInputChange} placeholder="Price" min={0} step="0.01" required
-                  className="w-full p-3 rounded-lg border border-gray-300 bg-gray-100 text-gray-900 focus:outline-none focus:ring-2 focus:ring-green-500"/>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Product Name</label>
+                <input
+                  type="text"
+                  name="name"
+                  value={formData.name}
+                  onChange={handleInputChange}
+                  required
+                  className="w-full px-4 py-3 bg-gray-100 border border-gray-300 text-gray-900 focus:outline-none focus:ring-2 focus:ring-green-500"
+                />
               </div>
+
               <div>
-                <label className="text-gray-700 block mb-2 font-medium">Quantity</label>
-                <input type="number" name="quantity" value={formData.quantity} onChange={handleInputChange} placeholder="Quantity" min={0} required
-                  className="w-full p-3 rounded-lg border border-gray-300 bg-gray-100 text-gray-900 focus:outline-none focus:ring-2 focus:ring-green-500"/>
-              </div>
-              <div>
-                <label className="text-gray-700 block mb-2 font-medium">Unit</label>
-                <input type="text" name="unit" value={formData.unit} onChange={handleInputChange} placeholder="Unit (kg, piece)" required
-                  className="w-full p-3 rounded-lg border border-gray-300 bg-gray-100 text-gray-900 focus:outline-none focus:ring-2 focus:ring-green-500"/>
-              </div>
-              <div>
-                <label className="text-gray-700 block mb-2 font-medium">Category</label>
-                <select name="category" value={formData.category} onChange={handleInputChange} required
-                  className="w-full p-3 rounded-lg border border-gray-300 bg-gray-100 text-gray-900 focus:outline-none focus:ring-2 focus:ring-green-500">
-                  <option value="">Select Category</option>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Category</label>
+                <select
+                  name="category"
+                  value={formData.category}
+                  onChange={handleInputChange}
+                  required
+                  className="w-full px-4 py-3 bg-gray-100 border border-gray-300 text-gray-900 focus:outline-none focus:ring-2 focus:ring-green-500"
+                >
+                  <option value="">Select a category</option>
                   <option value="vegetables">Vegetables</option>
                   <option value="fruits">Fruits</option>
                   <option value="dairy">Dairy</option>
@@ -383,53 +384,133 @@ export default function SellPage() {
                   <option value="condiments">Condiments</option>
                 </select>
               </div>
+
               <div>
-                <label className="text-gray-700 block mb-2 font-medium">Status</label>
-                <select name="status" value={formData.status} onChange={handleInputChange} required
-                  className="w-full p-3 rounded-lg border border-gray-300 bg-gray-100 text-gray-900 focus:outline-none focus:ring-2 focus:ring-green-500">
+                <label className="block text-sm font-medium text-gray-700 mb-2">Price</label>
+                <input
+                  type="number"
+                  name="price"
+                  value={formData.price}
+                  onChange={handleInputChange}
+                  min="0"
+                  step="0.01"
+                  required
+                  className="w-full px-4 py-3 bg-gray-100 border border-gray-300 text-gray-900 focus:outline-none focus:ring-2 focus:ring-green-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Quantity</label>
+                <input
+                  type="number"
+                  name="quantity"
+                  value={formData.quantity}
+                  onChange={handleInputChange}
+                  min="0"
+                  required
+                  className="w-full px-4 py-3 bg-gray-100 border border-gray-300 text-gray-900 focus:outline-none focus:ring-2 focus:ring-green-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Unit</label>
+                <input
+                  type="text"
+                  name="unit"
+                  value={formData.unit}
+                  onChange={handleInputChange}
+                  placeholder="e.g., kg, lb, piece"
+                  required
+                  className="w-full px-4 py-3 bg-gray-100 border border-gray-300 text-gray-900 focus:outline-none focus:ring-2 focus:ring-green-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Status</label>
+                <select
+                  name="status"
+                  value={formData.status}
+                  onChange={handleInputChange}
+                  required
+                  className="w-full px-4 py-3 bg-gray-100 border border-gray-300 text-gray-900 focus:outline-none focus:ring-2 focus:ring-green-500"
+                >
                   <option value="Available">Available</option>
                   <option value="Out of Stock">Out of Stock</option>
                   <option value="Restocked">Restocked</option>
                   <option value="Limited">Limited</option>
                   <option value="Coming Soon">Coming Soon</option>
-                  <option value="Discontinued">Discontinued</option>
                 </select>
               </div>
             </div>
 
-            {/* Images */}
-            <div>
-              <label className="text-gray-700 block mb-2 font-medium">Product Images</label>
-              <input type="file" ref={fileInputRef} onChange={handleImageUpload} accept="image/*" multiple className="hidden"/>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mb-4">
-                {imagePreviews.map((img, idx) => (
-                  <div key={idx} className="relative group rounded-lg border border-gray-300 overflow-hidden">
-                    <img src={img} className="w-full h-32 object-cover group-hover:scale-105 transition-transform"/>
-                    <button type="button" onClick={() => removeImage(idx)}
-                      className="absolute -top-2 -right-2 bg-red-500 text-white p-1 rounded-full hover:bg-red-600">
-                      <X className="w-4 h-4"/>
-                    </button>
-                  </div>
-                ))}
-                {imagePreviews.length < 5 && (
-                  <motion.button type="button" onClick={() => fileInputRef.current?.click()} 
-                    className="w-full h-32 border-2 border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center text-gray-400 hover:text-gray-600 hover:border-gray-400 transition-colors"
-                    whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
-                    <Upload className="w-8 h-8 mb-2"/>
-                    Add Image
-                  </motion.button>
-                )}
-              </div>
-              <p className="text-gray-500 text-sm">Upload up to 5 images. First image will be main display.</p>
+            <div className="mt-6">
+              <label className="block text-sm font-medium text-gray-700 mb-2">Description</label>
+              <textarea
+                name="description"
+                value={formData.description}
+                onChange={handleInputChange}
+                rows={4}
+                required
+                className="w-full px-4 py-3 bg-gray-100 border border-gray-300 text-gray-900 focus:outline-none focus:ring-2 focus:ring-green-500"
+              />
             </div>
 
-            {/* Buttons */}
-            <div className="flex justify-between pt-6">
-              <button type="button" onClick={resetForm} className="px-6 py-3 text-gray-600 hover:text-gray-900">Cancel</button>
-              <button type="submit" disabled={loading || uploading || !user.idVerified} 
-                className="px-8 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg flex items-center gap-2 disabled:bg-gray-400 disabled:cursor-not-allowed">
-                {uploading ? 'Uploading...' : loading ? 'Saving...' : editingProductId ? 'Update Product' : 'List Product'}
+            <div className="mt-6">
+              <label className="block text-sm font-medium text-gray-700 mb-2">Images</label>
+              <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleImageUpload}
+                accept="image/*"
+                multiple
+                className="hidden"
+              />
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="w-full border-2 border-dashed border-gray-300 p-6 text-center hover:border-gray-400 transition-colors"
+              >
+                <Upload className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+                <p className="text-gray-600">Click to upload images</p>
+                <p className="text-sm text-gray-500 mt-1">PNG, JPG, GIF up to 10MB</p>
               </button>
+
+              {imagePreviews.length > 0 && (
+                <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-4">
+                  {imagePreviews.map((preview, index) => (
+                    <div key={index} className="relative group">
+                      <Image src={preview} alt={`Preview ${index + 1}`} width={200} height={200} className="w-full h-32 object-cover rounded"/>
+                      <button
+                        type="button"
+                        onClick={() => removeImage(index)}
+                        className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="mt-8 flex gap-4">
+              <button
+                type="submit"
+                disabled={loading || uploading || !user.idVerified}
+                className="px-6 py-3 bg-green-500 text-white font-medium hover:bg-green-600 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center gap-2"
+              >
+                {uploading && <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>}
+                {loading ? 'Saving...' : editingProductId ? 'Update Product' : 'List Product'}
+              </button>
+              {editingProductId && (
+                <button
+                  type="button"
+                  onClick={resetForm}
+                  className="px-6 py-3 bg-gray-500 text-white font-medium hover:bg-gray-600 transition-colors"
+                >
+                  Cancel Edit
+                </button>
+              )}
             </div>
           </form>
         </div>

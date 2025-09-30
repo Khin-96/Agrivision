@@ -1,313 +1,361 @@
-// app/api/products/route.ts
-import { NextRequest, NextResponse } from "next/server";
-import clientPromise from "@/lib/mongodb";
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth";
-import { ObjectId } from "mongodb";
+//src/app/api/products/route.ts
 
-// Helper function for error responses
-function errorResponse(message: string, status: number = 500, details?: any) {
-  console.error(`API Error [${status}]: ${message}`, details || '');
-  return NextResponse.json({ 
-    error: message,
-    ...(details && { details: String(details) })
-  }, { status });
-}
+import { NextRequest, NextResponse } from 'next/server';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth';
+import { PrismaClient } from '@prisma/client';
 
-// Helper function to establish database connection with retry logic
-async function connectToDatabase(retries = 3) {
-  for (let i = 0; i < retries; i++) {
-    try {
-      console.log(`Database connection attempt ${i + 1}/${retries}`);
-      const client = await clientPromise;
-      const db = client.db("agrivision");
-      
-      // Test the connection
-      await db.admin().ping();
-      console.log("Successfully connected to database:", db.databaseName);
-      return { client, db };
-    } catch (error) {
-      console.error(`Database connection attempt ${i + 1} failed:`, error);
-      if (i === retries - 1) {
-        throw new Error(`Failed to connect to database after ${retries} attempts: ${error}`);
-      }
-      // Wait before retrying (exponential backoff)
-      await new Promise(resolve => setTimeout(resolve, Math.pow(2, i) * 1000));
-    }
-  }
-  throw new Error("Unexpected error in database connection");
-}
+const prisma = new PrismaClient();
 
-// --- GET ---
+// GET /api/products - Fetch products
 export async function GET(request: NextRequest) {
   try {
-    console.log("GET /api/products - Fetching products");
-    
-    const { client, db } = await connectToDatabase();
-
     const { searchParams } = new URL(request.url);
-    const sellerId = searchParams.get("sellerId");
-    console.log("Query parameters:", { sellerId });
+    const sellerId = searchParams.get('sellerId');
+    const category = searchParams.get('category');
+    const available = searchParams.get('available');
 
-    const query: any = {};
-    if (sellerId) query.farmerId = sellerId;
+    let where: any = {};
 
-    console.log("Executing query:", query);
-    const products = await db
-      .collection("products")
-      .find(query)
-      .sort({ createdAt: -1 })
-      .toArray();
+    if (sellerId) {
+      where.farmerId = sellerId;
+    }
 
-    console.log(`Found ${products.length} products`);
+    if (category && category !== 'all') {
+      where.category = category;
+    }
 
-    // Optional: fetch farmer names (denormalized here)
-    const formatted = products.map((p: any) => ({
-      ...p,
-      id: p._id.toString(),
-      farmerName: p.farmerName || "Unknown",
-      status: p.available
-        ? p.quantity > 10
-          ? "Available"
-          : p.quantity > 0
-          ? "Limited"
-          : "Out of Stock"
-        : "Out of Stock",
+    if (available === 'true') {
+      where.available = true;
+    }
+
+    const products = await prisma.product.findMany({
+      where,
+      include: {
+        farmer: {
+          select: {
+            name: true,
+            email: true,
+            image: true,
+          },
+        },
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+
+    // Transform the data to match frontend expectations
+    const transformedProducts = products.map(product => ({
+      id: product.id,
+      name: product.name,
+      description: product.description,
+      price: Number(product.price),
+      category: product.category,
+      quantity: Number(product.quantity),
+      unit: product.unit,
+      images: product.images,
+      farmerId: product.farmerId,
+      farmerName: product.farmer.name,
+      available: product.available,
+      rating: product.rating || 0,
+      reviews: product.reviews || 0,
+      status: product.status || (product.available ? 'Available' : 'Out of Stock'),
+      createdAt: product.createdAt,
+      updatedAt: product.updatedAt,
     }));
 
-    return NextResponse.json(formatted);
-  } catch (err: any) {
-    console.error("GET /api/products error:", err);
-    return errorResponse("Failed to fetch products", 500, err.message);
+    return NextResponse.json(transformedProducts);
+  } catch (error) {
+    console.error('Failed to fetch products:', error);
+    return NextResponse.json(
+      { error: 'Failed to fetch products' },
+      { status: 500 }
+    );
   }
 }
 
-// --- POST ---
+// POST /api/products - Create a new product
 export async function POST(request: NextRequest) {
   try {
-    console.log("POST /api/products - Creating new product");
-    
     const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      console.warn("POST /api/products - Unauthorized: No session found");
-      return errorResponse("Unauthorized", 401);
-    }
-
-    console.log("Authenticated user:", session.user.id);
     
-    let body;
-    try {
-      body = await request.json();
-      console.log("Request body received:", Object.keys(body));
-    } catch (parseError) {
-      console.error("Failed to parse request body:", parseError);
-      return errorResponse("Invalid JSON in request body", 400);
+    if (!session?.user?.email) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
     }
 
-    const { name, description, price, category, quantity, unit, images, available, rating, reviews } = body;
-
-    if (!name || !price || !category) {
-      console.warn("Missing required fields:", { name: !!name, price: !!price, category: !!category });
-      return errorResponse("Missing required fields: name, price, and category are required", 400);
-    }
-
-    // Validate data types
-    if (isNaN(Number(price)) || Number(price) <= 0) {
-      return errorResponse("Price must be a positive number", 400);
-    }
-
-    if (quantity !== undefined && (isNaN(Number(quantity)) || Number(quantity) < 0)) {
-      return errorResponse("Quantity must be a non-negative number", 400);
-    }
-
-    const { client, db } = await connectToDatabase();
-
-    const newProduct = {
-      name: String(name).trim(),
-      description: String(description || "").trim(),
-      price: Number(price),
-      category: String(category).trim(),
-      quantity: Number(quantity) || 0,
-      unit: String(unit || "unit").trim(),
-      images: Array.isArray(images) ? images : [],
-      available: available !== false, // Default to true
-      rating: Number(rating) || 0,
-      reviews: Number(reviews) || 0,
-      farmerId: session.user.id,
-      farmerName: session.user.name || "Unknown",
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    };
-
-    console.log("Inserting product:", {
-      name: newProduct.name,
-      price: newProduct.price,
-      category: newProduct.category,
-      farmerId: newProduct.farmerId
+    // Get user from database to check verification status
+    const user = await prisma.user.findUnique({
+      where: { email: session.user.email },
     });
 
-    const result = await db.collection("products").insertOne(newProduct);
-    console.log("Product inserted with ID:", result.insertedId);
+    if (!user) {
+      return NextResponse.json(
+        { error: 'User not found' },
+        { status: 404 }
+      );
+    }
 
-    // Return the product with the string ID
-    const responseProduct = {
-      ...newProduct,
-      id: result.insertedId.toString(),
-      _id: result.insertedId
+    if (!user.idVerified) {
+      return NextResponse.json(
+        { error: 'ID verification required to list products' },
+        { status: 403 }
+      );
+    }
+
+    const body = await request.json();
+    const {
+      name,
+      description,
+      price,
+      category,
+      quantity,
+      unit,
+      images,
+      available,
+      status,
+      rating,
+      reviews,
+    } = body;
+
+    // Validate required fields
+    if (!name || !description || !price || !category || !quantity || !unit || !images) {
+      return NextResponse.json(
+        { error: 'Missing required fields' },
+        { status: 400 }
+      );
+    }
+
+    // Create product
+    const product = await prisma.product.create({
+      data: {
+        name,
+        description,
+        price: parseFloat(price),
+        category,
+        quantity: parseInt(quantity),
+        unit,
+        images,
+        available: available !== undefined ? available : status === 'Available',
+        status: status || 'Available',
+        rating: rating || 0,
+        reviews: reviews || 0,
+        farmerId: user.id,
+      },
+      include: {
+        farmer: {
+          select: {
+            name: true,
+            email: true,
+            image: true,
+          },
+        },
+      },
+    });
+
+    // Transform the response
+    const transformedProduct = {
+      id: product.id,
+      name: product.name,
+      description: product.description,
+      price: Number(product.price),
+      category: product.category,
+      quantity: Number(product.quantity),
+      unit: product.unit,
+      images: product.images,
+      farmerId: product.farmerId,
+      farmerName: product.farmer.name,
+      available: product.available,
+      rating: product.rating || 0,
+      reviews: product.reviews || 0,
+      status: product.status || (product.available ? 'Available' : 'Out of Stock'),
+      createdAt: product.createdAt,
+      updatedAt: product.updatedAt,
     };
 
-    return NextResponse.json(responseProduct, { status: 201 });
-  } catch (err: any) {
-    console.error("POST /api/products error:", err);
-    return errorResponse("Failed to create product", 500, err.message);
+    return NextResponse.json(transformedProduct, { status: 201 });
+  } catch (error) {
+    console.error('Failed to create product:', error);
+    return NextResponse.json(
+      { error: 'Failed to create product' },
+      { status: 500 }
+    );
   }
 }
 
-// --- PUT ---
+// PUT /api/products - Update a product
 export async function PUT(request: NextRequest) {
   try {
-    console.log("PUT /api/products - Updating product");
-    
     const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      console.warn("PUT /api/products - Unauthorized: No session found");
-      return errorResponse("Unauthorized", 401);
-    }
-
-    console.log("Authenticated user:", session.user.id);
     
-    let body;
-    try {
-      body = await request.json();
-      console.log("Update request for product ID:", body.id);
-    } catch (parseError) {
-      console.error("Failed to parse request body:", parseError);
-      return errorResponse("Invalid JSON in request body", 400);
+    if (!session?.user?.email) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
     }
 
-    const { id, ...updates } = body;
+    const body = await request.json();
+    const {
+      id,
+      name,
+      description,
+      price,
+      category,
+      quantity,
+      unit,
+      images,
+      available,
+      status,
+    } = body;
+
     if (!id) {
-      console.warn("PUT /api/products - Product ID required");
-      return errorResponse("Product ID required", 400);
+      return NextResponse.json(
+        { error: 'Product ID is required' },
+        { status: 400 }
+      );
     }
 
-    let objectId;
-    try {
-      objectId = new ObjectId(id);
-    } catch (error) {
-      return errorResponse("Invalid product ID format", 400);
-    }
-
-    const { client, db } = await connectToDatabase();
-
-    console.log("Finding product with ID:", id);
-    const product = await db.collection("products").findOne({ _id: objectId });
-    
-    if (!product) {
-      console.warn("PUT /api/products - Product not found:", id);
-      return errorResponse("Product not found", 404);
-    }
-    
-    if (product.farmerId !== session.user.id) {
-      console.warn("PUT /api/products - Unauthorized: User doesn't own this product");
-      return errorResponse("Unauthorized: You can only edit your own products", 401);
-    }
-
-    // Prepare updates
-    const updateData: any = { updatedAt: new Date() };
-    
-    if (updates.name !== undefined) updateData.name = String(updates.name).trim();
-    if (updates.description !== undefined) updateData.description = String(updates.description).trim();
-    if (updates.price !== undefined) {
-      const price = Number(updates.price);
-      if (isNaN(price) || price <= 0) {
-        return errorResponse("Price must be a positive number", 400);
-      }
-      updateData.price = price;
-    }
-    if (updates.quantity !== undefined) {
-      const quantity = Number(updates.quantity);
-      if (isNaN(quantity) || quantity < 0) {
-        return errorResponse("Quantity must be a non-negative number", 400);
-      }
-      updateData.quantity = quantity;
-    }
-    if (updates.category !== undefined) updateData.category = String(updates.category).trim();
-    if (updates.unit !== undefined) updateData.unit = String(updates.unit).trim();
-    if (updates.available !== undefined) updateData.available = Boolean(updates.available);
-    if (updates.images !== undefined) {
-      updateData.images = Array.isArray(updates.images) ? updates.images : [updates.images];
-    }
-
-    console.log("Applying updates:", Object.keys(updateData));
-    await db.collection("products").updateOne(
-      { _id: objectId }, 
-      { $set: updateData }
-    );
-
-    const updatedProduct = await db.collection("products").findOne({ _id: objectId });
-    console.log("Product updated successfully");
-
-    return NextResponse.json({
-      ...updatedProduct,
-      id: updatedProduct?._id.toString()
+    // Check if product exists and user owns it
+    const existingProduct = await prisma.product.findUnique({
+      where: { id },
+      include: { farmer: true },
     });
-  } catch (err: any) {
-    console.error("PUT /api/products error:", err);
-    return errorResponse("Failed to update product", 500, err.message);
+
+    if (!existingProduct) {
+      return NextResponse.json(
+        { error: 'Product not found' },
+        { status: 404 }
+      );
+    }
+
+    // Verify user owns this product
+    const user = await prisma.user.findUnique({
+      where: { email: session.user.email },
+    });
+
+    if (!user || existingProduct.farmerId !== user.id) {
+      return NextResponse.json(
+        { error: 'Unauthorized to update this product' },
+        { status: 403 }
+      );
+    }
+
+    // Update product
+    const updatedProduct = await prisma.product.update({
+      where: { id },
+      data: {
+        name: name || existingProduct.name,
+        description: description || existingProduct.description,
+        price: price !== undefined ? parseFloat(price) : existingProduct.price,
+        category: category || existingProduct.category,
+        quantity: quantity !== undefined ? parseInt(quantity) : existingProduct.quantity,
+        unit: unit || existingProduct.unit,
+        images: images || existingProduct.images,
+        available: available !== undefined ? available : (status === 'Available'),
+        status: status || existingProduct.status,
+      },
+      include: {
+        farmer: {
+          select: {
+            name: true,
+            email: true,
+            image: true,
+          },
+        },
+      },
+    });
+
+    // Transform the response
+    const transformedProduct = {
+      id: updatedProduct.id,
+      name: updatedProduct.name,
+      description: updatedProduct.description,
+      price: Number(updatedProduct.price),
+      category: updatedProduct.category,
+      quantity: Number(updatedProduct.quantity),
+      unit: updatedProduct.unit,
+      images: updatedProduct.images,
+      farmerId: updatedProduct.farmerId,
+      farmerName: updatedProduct.farmer.name,
+      available: updatedProduct.available,
+      rating: updatedProduct.rating || 0,
+      reviews: updatedProduct.reviews || 0,
+      status: updatedProduct.status || (updatedProduct.available ? 'Available' : 'Out of Stock'),
+      createdAt: updatedProduct.createdAt,
+      updatedAt: updatedProduct.updatedAt,
+    };
+
+    return NextResponse.json(transformedProduct);
+  } catch (error) {
+    console.error('Failed to update product:', error);
+    return NextResponse.json(
+      { error: 'Failed to update product' },
+      { status: 500 }
+    );
   }
 }
 
-// --- DELETE ---
+// DELETE /api/products - Delete a product
 export async function DELETE(request: NextRequest) {
   try {
-    console.log("DELETE /api/products - Deleting product");
-    
     const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      console.warn("DELETE /api/products - Unauthorized: No session found");
-      return errorResponse("Unauthorized", 401);
+    
+    if (!session?.user?.email) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
     }
 
-    console.log("Authenticated user:", session.user.id);
-    
     const { searchParams } = new URL(request.url);
-    const id = searchParams.get("id");
-    
+    const id = searchParams.get('id');
+
     if (!id) {
-      console.warn("DELETE /api/products - Product ID required");
-      return errorResponse("Product ID required", 400);
+      return NextResponse.json(
+        { error: 'Product ID is required' },
+        { status: 400 }
+      );
     }
 
-    let objectId;
-    try {
-      objectId = new ObjectId(id);
-    } catch (error) {
-      return errorResponse("Invalid product ID format", 400);
+    // Check if product exists and user owns it
+    const existingProduct = await prisma.product.findUnique({
+      where: { id },
+    });
+
+    if (!existingProduct) {
+      return NextResponse.json(
+        { error: 'Product not found' },
+        { status: 404 }
+      );
     }
 
-    console.log("Deleting product with ID:", id);
-    
-    const { client, db } = await connectToDatabase();
+    // Verify user owns this product
+    const user = await prisma.user.findUnique({
+      where: { email: session.user.email },
+    });
 
-    const product = await db.collection("products").findOne({ _id: objectId });
-    
-    if (!product) {
-      console.warn("DELETE /api/products - Product not found:", id);
-      return errorResponse("Product not found", 404);
-    }
-    
-    if (product.farmerId !== session.user.id) {
-      console.warn("DELETE /api/products - Unauthorized: User doesn't own this product");
-      return errorResponse("Unauthorized: You can only delete your own products", 401);
+    if (!user || existingProduct.farmerId !== user.id) {
+      return NextResponse.json(
+        { error: 'Unauthorized to delete this product' },
+        { status: 403 }
+      );
     }
 
-    await db.collection("products").deleteOne({ _id: objectId });
-    console.log("Product deleted successfully");
+    // Delete product
+    await prisma.product.delete({
+      where: { id },
+    });
 
-    return NextResponse.json({ message: "Product deleted successfully" });
-  } catch (err: any) {
-    console.error("DELETE /api/products error:", err);
-    return errorResponse("Failed to delete product", 500, err.message);
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error('Failed to delete product:', error);
+    return NextResponse.json(
+      { error: 'Failed to delete product' },
+      { status: 500 }
+    );
   }
 }

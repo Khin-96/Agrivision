@@ -11,8 +11,8 @@ const navigation = [
   { name: 'Upload', href: '/upload' },
   { name: 'History', href: '/history' },
   { name: 'Market', href: '/market' },
-  { name: 'About', href: '/about' },
   { name: 'Monitor Farm', href: '/Monitor-Farm' },
+  { name: 'About', href: '/about' },
 ];
 
 export default function Header() {
