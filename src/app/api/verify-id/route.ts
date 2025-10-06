@@ -6,8 +6,17 @@ import { analyzeContent } from '@/lib/gemini';
 import { uploadImageToStorage } from '@/lib/storage';
 import { prisma } from '@/lib/prisma';
 
+// Prevent static generation - this API route must be dynamic
+export const dynamic = 'force-dynamic';
+
 export async function POST(req: NextRequest) {
   try {
+    // Prevent execution during build phase
+    if (process.env.NEXT_PHASE === 'phase-production-build') {
+      console.log('🛑 API route called during build phase - skipping');
+      return NextResponse.json({ error: 'Service unavailable during build' }, { status: 503 });
+    }
+
     console.log('🔍 Starting ID verification process...');
     
     // Check authentication
