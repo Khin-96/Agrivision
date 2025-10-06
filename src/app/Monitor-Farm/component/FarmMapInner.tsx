@@ -235,8 +235,7 @@ export default function FarmMapInner() {
     // Auto-send if there's a question
     if (question.trim()) {
       setTimeout(() => {
-        const sendButton = document.querySelector('button[onClick*="sendMessage"]') as HTMLButtonElement;
-        if (sendButton) sendButton.click();
+        sendMessage();
       }, 100);
     }
   };
@@ -269,7 +268,7 @@ export default function FarmMapInner() {
         mapContainerStyle={{ width: "100%", height: "100%" }}
         center={mapCenter}
         zoom={12}
-        onLoad={(map) => (mapRef.current = map)}
+        onLoad={(map) => { mapRef.current = map; }}
         onDragEnd={() => {
           if (mapRef.current) {
             const center = mapRef.current.getCenter();
