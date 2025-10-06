@@ -1,5 +1,3 @@
-//app/buy/page.tsx
-
 'use client';
 
 import React, { useState, useEffect } from 'react';
@@ -7,6 +5,7 @@ import Layout from '@/components/layout/Layout';
 import Image from 'next/image';
 import { Search, ShoppingCart, Star, Filter, SortAsc } from 'lucide-react';
 import Cart from '@/components/cart/Cart';
+import { CartItem } from '@/types/cart';
 
 interface Product {
   id: string;
@@ -23,15 +22,6 @@ interface Product {
   rating: number;
   reviews: number;
   status: 'Available' | 'Out of Stock' | 'Restocked' | 'Limited' | 'Coming Soon' | 'Discontinued';
-}
-
-interface CartItem {
-  id: string;
-  name: string;
-  price: number;
-  image: string;
-  quantity: number;
-  unit: string;
 }
 
 const categories = ['all','vegetables','fruits','dairy','grains','herbs','meat','condiments'];
