@@ -37,7 +37,7 @@ export const authOptions: NextAuthOptions = {
           id: user.id,
           email: user.email,
           name: user.name,
-          role: user.role,
+          role: user.role as "farmer" | "buyer", // Add type assertion here
           idVerified: user.idVerified,
           image: user.image,
           idFrontUrl: user.idFrontUrl,
