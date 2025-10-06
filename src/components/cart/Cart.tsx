@@ -13,22 +13,27 @@ interface CartProps {
 }
 
 export default function Cart({ isOpen, onClose, items, onUpdateQuantity, onRemoveItem }: CartProps) {
+  // ✅ Compute total price in KSh
   const total = items.reduce((sum, item) => {
-    // If price is already a number, use it directly
-    // If it's a string, parse it (keeping your original logic as fallback)
-    const price = typeof item.price === 'number' 
-      ? item.price 
-      : parseFloat(String(item.price).replace(/[^\d.]/g, ''));
-    
-    return sum + (price * item.quantity);
+    const price =
+      typeof item.price === 'number'
+        ? item.price
+        : parseFloat(String(item.price).replace(/[^\d.]/g, ''));
+
+    return sum + price * item.quantity;
   }, 0);
 
-  // Format price for display
+  // ✅ Format price in KSh
   const formatPrice = (price: number | string) => {
-    if (typeof price === 'number') {
-      return `$${price.toFixed(2)}`;
-    }
-    return price; // Keep as is if it's already a formatted string
+    const numeric =
+      typeof price === 'number'
+        ? price
+        : parseFloat(String(price).replace(/[^\d.]/g, ''));
+
+    return `KSh ${numeric.toLocaleString('en-KE', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })}`;
   };
 
   return (
@@ -52,9 +57,8 @@ export default function Cart({ isOpen, onClose, items, onUpdateQuantity, onRemov
             transition={{ type: 'spring', damping: 30 }}
             className="fixed top-0 right-0 h-full w-full sm:w-96 z-50"
           >
-            {/* Water-transparent container with ripple animation */}
             <div className="relative h-full flex flex-col bg-gray-900/50 border-l border-white/20 overflow-hidden">
-              {/* Ripple Overlay */}
+              {/* Ripple overlay */}
               <div className="absolute inset-0 bg-gradient-to-r from-white/5 via-white/15 to-white/5 animate-ripple pointer-events-none"></div>
 
               {/* Header */}
@@ -95,7 +99,9 @@ export default function Cart({ isOpen, onClose, items, onUpdateQuantity, onRemov
                           className="w-16 h-16 object-cover rounded-md"
                         />
                         <div className="flex-1">
-                          <h3 className="text-white font-medium drop-shadow-sm">{item.name}</h3>
+                          <h3 className="text-white font-medium drop-shadow-sm">
+                            {item.name}
+                          </h3>
                           <p className="text-green-400 font-semibold drop-shadow-sm">
                             {formatPrice(item.price)}
                           </p>
@@ -107,7 +113,9 @@ export default function Cart({ isOpen, onClose, items, onUpdateQuantity, onRemov
                           >
                             <Minus className="w-4 h-4 text-white" />
                           </button>
-                          <span className="text-white w-8 text-center">{item.quantity}</span>
+                          <span className="text-white w-8 text-center">
+                            {item.quantity}
+                          </span>
                           <button
                             onClick={() => onUpdateQuantity(item.id, item.quantity + 1)}
                             className="p-1 hover:bg-white/20 rounded transition-colors"
@@ -133,7 +141,7 @@ export default function Cart({ isOpen, onClose, items, onUpdateQuantity, onRemov
                   <div className="flex justify-between items-center mb-4">
                     <span className="text-white/80 drop-shadow-sm">Total:</span>
                     <span className="text-2xl font-bold text-green-400 drop-shadow-sm">
-                      ${total.toFixed(2)}
+                      {formatPrice(total)}
                     </span>
                   </div>
                   <button className="w-full bg-green-600/80 hover:bg-green-700/80 text-white py-3 font-semibold rounded-lg transition-colors">
