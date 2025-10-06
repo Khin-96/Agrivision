@@ -230,7 +230,7 @@ export default function BuyPage() {
                       ))}
                       <span className="ml-2 text-sm text-gray-600">({product.reviews})</span>
                     </div>
-                    <p className="text-lg font-semibold text-gray-900 mt-2">${product.price.toFixed(2)}/{product.unit}</p>
+                    <p className="text-lg font-semibold text-gray-900 mt-2">KSh {product.price.toFixed(2)}/{product.unit}</p>
                     <p className="text-gray-600 text-sm mt-2 line-clamp-2">{product.description}</p>
                     <button
                       onClick={() => addToCart(product)}

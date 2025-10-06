@@ -65,14 +65,16 @@ export default function MarketplacePage() {
       const existingItem = prevItems.find(item => item.id === product.id);
       if (existingItem) {
         return prevItems.map(item =>
-          item.id === product.id ? { ...item, cartQuantity: item.cartQuantity + 1 } : item
+          item.id === product.id ? { ...item, quantity: item.quantity + 1 } : item
         );
       }
-      // Create CartItem from Product with all required fields
-      return [...prevItems, { 
-        ...product, 
-        cartQuantity: 1,
-        image: product.images[0] || '/placeholder-product.jpg'
+      return [...prevItems, {
+        id: product.id,
+        name: product.name,
+        price: product.price,
+        image: product.images[0] || '/placeholder-product.jpg',
+        quantity: 1,
+        unit: product.unit
       }];
     });
     setIsCartOpen(true);
@@ -85,7 +87,7 @@ export default function MarketplacePage() {
     }
     setCartItems(prevItems =>
       prevItems.map(item =>
-        item.id === id ? { ...item, cartQuantity: quantity } : item
+        item.id === id ? { ...item, quantity } : item
       )
     );
   };
@@ -94,7 +96,7 @@ export default function MarketplacePage() {
     setCartItems(prevItems => prevItems.filter(item => item.id !== id));
   };
 
-  const cartTotal = cartItems.reduce((total, item) => total + item.cartQuantity, 0);
+  const cartTotal = cartItems.reduce((total, item) => total + item.quantity, 0);
 
   // Loader
   if (authLoading || loading) {
@@ -121,160 +123,184 @@ export default function MarketplacePage() {
       {/* Floating Actions */}
       <div className="fixed bottom-6 right-6 z-40 flex flex-col gap-3">
         {user?.role === 'farmer' && (
-          <Link href="/sell" className="bg-green-500 hover:bg-green-600 text-white p-3 rounded-full shadow-lg flex items-center gap-2 transition-colors">
-            <PlusCircle className="w-5 h-5" />
+          <Link
+            href="/sell"
+            className="bg-green-500 hover:bg-green-600 text-white p-4 rounded-full shadow-lg flex items-center justify-center transition-all duration-200 transform hover:scale-105"
+            title="Sell Products"
+          >
+            <PlusCircle className="w-6 h-6" />
           </Link>
         )}
-
         <button
-          className="bg-green-500 hover:bg-green-600 text-white p-3 rounded-full shadow-lg flex items-center gap-2 relative transition-colors"
           onClick={() => setIsCartOpen(true)}
+          className="bg-blue-500 hover:bg-blue-600 text-white p-4 rounded-full shadow-lg flex items-center justify-center relative transition-all duration-200 transform hover:scale-105"
         >
-          <ShoppingCart className="w-5 h-5" />
+          <ShoppingCart className="w-6 h-6" />
           {cartTotal > 0 && (
-            <span className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-5 h-5 text-xs flex items-center justify-center">
+            <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs rounded-full h-6 w-6 flex items-center justify-center">
               {cartTotal}
             </span>
           )}
         </button>
-
-        <button
-          className="bg-gray-700 hover:bg-gray-800 text-white p-3 rounded-full shadow-lg transition-colors"
-          onClick={() => router.push('/profile')}
-        >
-          <User className="w-5 h-5" />
-        </button>
       </div>
 
       {/* Hero Section */}
-      <div className="relative w-full h-96 overflow-hidden bg-cover bg-center" style={{ backgroundImage: "url('/market.jpg')" }}>
-        <div className="absolute inset-0 bg-black/40 z-10"></div>
-        <div className="relative z-20 flex flex-col items-center justify-center h-full text-center px-6">
-          <h1 className="text-4xl sm:text-5xl md:text-6xl font-extrabold text-white tracking-tight">
-            Farmer's <span className="text-green-400">Marketplace</span>
+      <section className="bg-gradient-to-br from-blue-600 to-purple-700 text-white py-20 px-4">
+        <div className="max-w-7xl mx-auto text-center">
+          <h1 className="text-5xl md:text-6xl font-bold mb-6">
+            Fresh from Farm to Table
           </h1>
-          <p className="mt-6 max-w-2xl text-lg sm:text-xl text-gray-200">
-            Buy fresh produce directly from local farmers or sell your harvest.
+          <p className="text-xl md:text-2xl mb-8 opacity-90">
+            Discover the finest local produce from trusted farmers in your community
           </p>
-
-          {!user ? (
-            <div className="mt-8 flex flex-col sm:flex-row gap-4">
-              <button
-                onClick={() => signIn('google', { callbackUrl: '/buy' })}
-                className="px-6 py-3 rounded-lg bg-green-500 hover:bg-green-600 text-white transition-colors"
-              >
-                Login as Buyer
-              </button>
-              <button
-                onClick={() => signIn('google', { callbackUrl: '/sell' })}
-                className="px-6 py-3 rounded-lg bg-blue-500 hover:bg-blue-600 text-white transition-colors"
-              >
-                Login as Seller
-              </button>
-            </div>
-          ) : (
-            <div className="mt-8 flex flex-col sm:flex-row gap-4">
-              <Link
-                href="/buy"
-                className="px-6 py-3 bg-green-500 hover:bg-green-600 text-white rounded-lg transition-colors flex items-center gap-2"
-              >
-                <ShoppingBag className="w-5 h-5" />
-                Shop as Buyer
-              </Link>
+          <div className="flex flex-col sm:flex-row gap-4 justify-center">
+            <Link
+              href="/buy"
+              className="bg-white text-blue-600 px-8 py-4 rounded-lg font-semibold hover:bg-gray-100 transition-colors text-lg"
+            >
+              Shop Now
+            </Link>
+            {user?.role === 'farmer' ? (
               <Link
                 href="/sell"
-                className="px-6 py-3 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors flex items-center gap-2"
+                className="border-2 border-white text-white px-8 py-4 rounded-lg font-semibold hover:bg-white hover:text-blue-600 transition-colors text-lg"
               >
-                <Store className="w-5 h-5" />
-                Sell as Farmer
+                Sell Products
               </Link>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Products Section */}
-      <div className="py-12 bg-gradient-to-br from-blue-50 to-indigo-100 min-h-screen">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-12">
-            <h2 className="text-base text-green-600 font-semibold tracking-wide uppercase">
-              Featured Products
-            </h2>
-            <p className="mt-2 text-3xl leading-8 font-extrabold tracking-tight text-gray-800 sm:text-4xl">
-              Fresh From Our Farms
-            </p>
-            <p className="mt-4 max-w-2xl text-xl text-gray-600 mx-auto">
-              Discover the best produce from local farmers in your area.
-            </p>
+            ) : (
+              <button
+                onClick={() => router.push('/auth?tab=register')}
+                className="border-2 border-white text-white px-8 py-4 rounded-lg font-semibold hover:bg-white hover:text-blue-600 transition-colors text-lg"
+              >
+                Become a Farmer
+              </button>
+            )}
           </div>
+        </div>
+      </section>
 
-          {products.length === 0 ? (
-            <div className="text-center text-gray-600 bg-white/80 backdrop-blur-md border border-white/30 p-8">
-              No products available yet.
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
-              {products.map(product => (
-                <div key={product.id} className="bg-white/80 backdrop-blur-md border border-white/30 shadow-xl overflow-hidden flex flex-col">
-                  <div className="relative h-48 w-full">
-                    <Image
-                      src={product.images[0] || '/placeholder-product.jpg'}
-                      alt={product.name}
-                      fill
-                      className="object-cover"
-                    />
+      {/* Stats Section */}
+      <section className="bg-white py-16 px-4">
+        <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-8 text-center">
+          <div>
+            <ShoppingBag className="w-12 h-12 text-green-500 mx-auto mb-4" />
+            <h3 className="text-3xl font-bold text-gray-900 mb-2">500+</h3>
+            <p className="text-gray-600">Products Available</p>
+          </div>
+          <div>
+            <User className="w-12 h-12 text-blue-500 mx-auto mb-4" />
+            <h3 className="text-3xl font-bold text-gray-900 mb-2">100+</h3>
+            <p className="text-gray-600">Local Farmers</p>
+          </div>
+          <div>
+            <Store className="w-12 h-12 text-purple-500 mx-auto mb-4" />
+            <h3 className="text-3xl font-bold text-gray-900 mb-2">50+</h3>
+            <p className="text-gray-600">Communities Served</p>
+          </div>
+        </div>
+      </section>
+
+      {/* Featured Products */}
+      <section className="bg-gray-50 py-16 px-4">
+        <div className="max-w-7xl mx-auto">
+          <h2 className="text-3xl font-bold text-gray-900 mb-12 text-center">
+            Featured Products
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
+            {products.slice(0, 8).map(product => (
+              <div key={product.id} className="bg-white rounded-xl shadow-lg overflow-hidden hover:shadow-xl transition-shadow duration-300">
+                <div className="relative h-48 w-full">
+                  <Image
+                    src={product.images[0] || '/placeholder-product.jpg'}
+                    alt={product.name}
+                    fill
+                    className="object-cover"
+                  />
+                  <div className="absolute top-4 right-4">
+                    <span className={`px-3 py-1 rounded-full text-sm font-semibold ${
+                      product.status === 'Available' ? 'bg-green-100 text-green-800' :
+                      product.status === 'Out of Stock' ? 'bg-red-100 text-red-800' :
+                      product.status === 'Restocked' ? 'bg-blue-100 text-blue-800' :
+                      product.status === 'Limited' ? 'bg-yellow-100 text-yellow-800' :
+                      'bg-purple-100 text-purple-800'
+                    }`}>
+                      {product.status}
+                    </span>
                   </div>
-
-                  <div className="p-6 flex flex-col flex-grow">
-                    <h3 className="text-xl font-bold text-gray-800">{product.name}</h3>
-                    <p className="mt-1 text-sm text-green-600">By {product.farmerName}</p>
-
-                    <div className="flex items-center mt-2">
-                      {[...Array(5)].map((_, i) => (
-                        <Star key={i} className={`w-4 h-4 ${i < Math.floor(product.rating) ? 'fill-yellow-400 text-yellow-400' : 'text-gray-300'}`} />
-                      ))}
-                      <span className="ml-2 text-sm text-gray-600">({product.reviews})</span>
-                    </div>
-
-                    <p className="mt-2 text-gray-600 flex-grow line-clamp-2">{product.description}</p>
-
-                    <div className="mt-4 flex items-center justify-between">
-                      <span className="text-2xl font-bold text-green-600">${product.price.toFixed(2)}/{product.unit}</span>
-                      <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
-                        product.status === 'Available' ? 'bg-green-100 text-green-800' :
-                        product.status === 'Out of Stock' ? 'bg-red-100 text-red-700' :
-                        product.status === 'Restocked' ? 'bg-blue-100 text-blue-700' :
-                        product.status === 'Limited' ? 'bg-yellow-100 text-yellow-700' :
-                        product.status === 'Coming Soon' ? 'bg-purple-100 text-purple-700' :
-                        'bg-gray-100 text-gray-700'
-                      }`}>
-                        {product.status}
-                      </span>
-                    </div>
-
+                </div>
+                <div className="p-6">
+                  <h3 className="text-xl font-bold text-gray-900 mb-2">{product.name}</h3>
+                  <p className="text-gray-600 text-sm mb-3">By {product.farmerName}</p>
+                  <div className="flex items-center mb-4">
+                    {[...Array(5)].map((_, i) => (
+                      <Star
+                        key={i}
+                        className={`w-4 h-4 ${
+                          i < Math.floor(product.rating)
+                            ? 'fill-yellow-400 text-yellow-400'
+                            : 'text-gray-300'
+                        }`}
+                      />
+                    ))}
+                    <span className="ml-2 text-sm text-gray-600">({product.reviews})</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-2xl font-bold text-gray-900">
+                      KSh {product.price.toFixed(2)}/{product.unit}
+                    </span>
                     <button
                       onClick={() => addToCart(product)}
                       disabled={product.status !== 'Available'}
-                      className="mt-4 px-4 py-2 bg-green-500 hover:bg-green-600 text-white transition-colors disabled:bg-gray-300"
+                      className={`px-4 py-2 rounded-lg font-semibold transition-colors ${
+                        product.status === 'Available'
+                          ? 'bg-green-500 hover:bg-green-600 text-white'
+                          : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                      }`}
                     >
                       {product.status === 'Available' ? 'Add to Cart' : product.status}
                     </button>
                   </div>
                 </div>
-              ))}
-            </div>
-          )}
-
-          <div className="mt-16 text-center">
+              </div>
+            ))}
+          </div>
+          <div className="text-center mt-12">
             <Link
               href="/buy"
-              className="inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-md text-white bg-green-500 hover:bg-green-600 transition-colors"
+              className="bg-blue-500 hover:bg-blue-600 text-white px-8 py-4 rounded-lg font-semibold transition-colors text-lg"
             >
               View All Products
             </Link>
           </div>
         </div>
-      </div>
+      </section>
+
+      {/* CTA Section */}
+      <section className="bg-gradient-to-r from-green-500 to-blue-500 py-16 px-4 text-white">
+        <div className="max-w-4xl mx-auto text-center">
+          <h2 className="text-3xl md:text-4xl font-bold mb-6">
+            Ready to Start Your Farming Journey?
+          </h2>
+          <p className="text-xl mb-8 opacity-90">
+            Join hundreds of farmers already selling their fresh produce on our platform
+          </p>
+          {user ? (
+            <Link
+              href="/sell"
+              className="bg-white text-green-600 px-8 py-4 rounded-lg font-semibold hover:bg-gray-100 transition-colors text-lg"
+            >
+              Start Selling Today
+            </Link>
+          ) : (
+            <button
+              onClick={() => router.push('/auth?tab=register')}
+              className="bg-white text-green-600 px-8 py-4 rounded-lg font-semibold hover:bg-gray-100 transition-colors text-lg"
+            >
+              Sign Up as Farmer
+            </button>
+          )}
+        </div>
+      </section>
     </Layout>
   );
 }

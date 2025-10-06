@@ -6,7 +6,6 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import { toast } from 'react-hot-toast';
 import { AlertCircle, Upload, X, Edit, Trash2 } from 'lucide-react';
-import { motion } from 'framer-motion';
 import Image from 'next/image';
 
 interface Product {
@@ -310,7 +309,7 @@ export default function SellPage() {
                   <div className="p-4 flex flex-col flex-grow">
                     <h3 className="font-bold text-lg text-gray-900">{product.name}</h3>
                     <p className="text-sm text-gray-600 mt-1">{product.category}</p>
-                    <p className="text-gray-900 font-semibold mt-2">${product.price}/{product.unit}</p>
+                    <p className="text-gray-900 font-semibold mt-2">KSh {product.price}/{product.unit}</p>
                     <p className="text-gray-600 text-sm mt-1 line-clamp-2">{product.description}</p>
                     <span className={`mt-2 px-2 py-1 rounded-full text-xs font-semibold w-fit ${
                       product.status === 'Available' ? 'bg-green-100 text-green-800' :
@@ -386,7 +385,7 @@ export default function SellPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Price</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Price (KSh)</label>
                 <input
                   type="number"
                   name="price"
