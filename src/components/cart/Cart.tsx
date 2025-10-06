@@ -14,9 +14,22 @@ interface CartProps {
 
 export default function Cart({ isOpen, onClose, items, onUpdateQuantity, onRemoveItem }: CartProps) {
   const total = items.reduce((sum, item) => {
-    const price = parseFloat(item.price.replace(/[^\d.]/g, ''));
+    // If price is already a number, use it directly
+    // If it's a string, parse it (keeping your original logic as fallback)
+    const price = typeof item.price === 'number' 
+      ? item.price 
+      : parseFloat(String(item.price).replace(/[^\d.]/g, ''));
+    
     return sum + (price * item.quantity);
   }, 0);
+
+  // Format price for display
+  const formatPrice = (price: number | string) => {
+    if (typeof price === 'number') {
+      return `$${price.toFixed(2)}`;
+    }
+    return price; // Keep as is if it's already a formatted string
+  };
 
   return (
     <AnimatePresence>
@@ -83,7 +96,9 @@ export default function Cart({ isOpen, onClose, items, onUpdateQuantity, onRemov
                         />
                         <div className="flex-1">
                           <h3 className="text-white font-medium drop-shadow-sm">{item.name}</h3>
-                          <p className="text-green-400 font-semibold drop-shadow-sm">{item.price}</p>
+                          <p className="text-green-400 font-semibold drop-shadow-sm">
+                            {formatPrice(item.price)}
+                          </p>
                         </div>
                         <div className="flex items-center gap-2">
                           <button
