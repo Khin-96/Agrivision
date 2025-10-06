@@ -2,7 +2,7 @@
 import { NextResponse } from "next/server";
 import path from "path";
 import { GoogleAuth } from "google-auth-library";
-import Groq from "groq-sdk"; // ✅ fixed import
+import Groq from "groq-sdk";
 
 interface Coordinate { lat: number; lng: number; }
 interface FieldData {
@@ -66,6 +66,12 @@ async function getGoogleClient() {
 // -------------------
 // Google Maps APIs
 // -------------------
+interface AddressComponent {
+  long_name: string;
+  short_name: string;
+  types: string[];
+}
+
 async function reverseGeocode(lat: number, lng: number) {
   try {
     const url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&key=${GMAP_KEY}&language=en`;
@@ -74,8 +80,7 @@ async function reverseGeocode(lat: number, lng: number) {
     const first = payload.results?.[0];
     const comps = first?.address_components || [];
     
-    // Fixed: Added type annotation for parameter 'c'
-    const find = (type: string) => comps.find((c: any) => c.types?.includes(type))?.long_name;
+    const find = (type: string) => comps.find((c: AddressComponent) => c.types?.includes(type))?.long_name;
     
     const street = find("route") || find("street_address") || "Nearby road";
     const locality = find("locality") || find("sublocality") || find("postal_town");
@@ -114,12 +119,13 @@ async function getPollen(lat: number, lng: number): Promise<string> {
 async function getCropType(coords: Coordinate[]): Promise<string> {
   try {
     const client = await getGoogleClient();
-    let token: string | undefined;
+    let token: string | null | undefined;
 
     // Retry OAuth token 3 times
     for (let i = 0; i < 3; i++) {
       try {
-        token = (await client.getAccessToken()).token;
+        const accessToken = await client.getAccessToken();
+        token = accessToken.token;
         if (token) break;
       } catch (err: any) {
         console.warn(`OAuth token retry ${i + 1} failed:`, err.message);
@@ -256,7 +262,7 @@ export async function POST(req: Request) {
     // -------------------
     // Groq AI dynamic response
     // -------------------
-    const client = new Groq({ apiKey: GROQ_KEY }); // ✅ fixed instantiation
+    const client = new Groq({ apiKey: GROQ_KEY });
     const systemPrompt = useSwahili
       ? `Wewe ni msaidizi wa kilimo. Toa muhtasari kamili wa shamba, hali ya mazao, aina ya mimea, na mapendekezo kwa mkulima.`
       : `You are a farm assistant. Provide a complete summary of the field, crop condition, crop type, and actionable recommendations for the farmer.`;
