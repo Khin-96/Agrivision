@@ -1,5 +1,5 @@
-import { MongoClient, Db, Collection } from 'mongodb';
-import mongoose, { Schema, Document, Model } from 'mongoose';
+import { MongoClient, Db, Collection, ObjectId } from 'mongodb';
+import mongoose, { Schema, Document, Model, Types } from 'mongoose';
 
 // Environment configuration
 const MONGODB_URI = process.env.MONGODB_URI!;
@@ -101,6 +101,7 @@ export interface IFarmPoint {
 
 // Farm Document Interface
 export interface IFarm extends Document {
+  _id: Types.ObjectId;
   userId: string;
   name: string;
   description?: string;
@@ -122,6 +123,7 @@ export interface IFarm extends Document {
 
 // User Document Interface
 export interface IUser extends Document {
+  _id: Types.ObjectId;
   email: string;
   name: string;
   farmIds: string[];
@@ -136,6 +138,7 @@ export interface IUser extends Document {
 
 // Satellite Analysis Document Interface
 export interface ISatelliteAnalysis extends Document {
+  _id: Types.ObjectId;
   farmId: string;
   userId: string;
   layerType: 'ndvi' | 'moisture' | 'temperature' | 'rgb';
@@ -363,8 +366,8 @@ export class FarmService {
     await connectToMongoose();
     
     // Calculate area if boundary is provided
-    if (farmData.boundary && validatePolygon(farmData.boundary)) {
-      farmData.totalArea = calculateFarmArea(farmData.boundary);
+    if (farmData.boundary && validatePolygon(farmData.boundary as GeoPolygon)) {
+      farmData.totalArea = calculateFarmArea(farmData.boundary as GeoPolygon);
     }
     
     const farm = new Farm(farmData);
@@ -388,8 +391,8 @@ export class FarmService {
     await connectToMongoose();
     
     // Recalculate area if boundary is updated
-    if (updates.boundary && validatePolygon(updates.boundary)) {
-      updates.totalArea = calculateFarmArea(updates.boundary);
+    if (updates.boundary && validatePolygon(updates.boundary as GeoPolygon)) {
+      updates.totalArea = calculateFarmArea(updates.boundary as GeoPolygon);
     }
     
     return await Farm.findOneAndUpdate(
