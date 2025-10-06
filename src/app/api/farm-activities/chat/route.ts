@@ -1,18 +1,25 @@
-// src/app/api/farm-activities/chat/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import Groq from "groq-sdk";
 
-// Environment validation
-if (!process.env.GROQ_API_KEY) {
-  throw new Error("GROQ_API_KEY environment variable is required");
-}
+// Initialize Groq client (but don't validate environment here)
+let groq: Groq | null = null;
 
-// Initialize Groq client
-const groq = new Groq({
-  apiKey: process.env.GROQ_API_KEY,
-  timeout: 30000, // 30s timeout
-  maxRetries: 3,
-});
+// Helper function to initialize Groq client
+function getGroqClient(): Groq {
+  if (!process.env.GROQ_API_KEY) {
+    throw new Error("GROQ_API_KEY environment variable is required");
+  }
+  
+  if (!groq) {
+    groq = new Groq({
+      apiKey: process.env.GROQ_API_KEY,
+      timeout: 30000,
+      maxRetries: 3,
+    });
+  }
+  
+  return groq;
+}
 
 // Model configuration
 const DEFAULT_MODEL = process.env.GROQ_MODEL || "llama-3.1-8b-instant";
@@ -109,7 +116,10 @@ export async function POST(req: NextRequest) {
   let clientId = "anonymous";
 
   try {
-    // Get client identifier from x-forwarded-for header (safe for NextRequest)
+    // Initialize Groq client here (inside the function)
+    const groqClient = getGroqClient();
+
+    // Get client identifier from x-forwarded-for header
     const forwardedFor = req.headers.get("x-forwarded-for");
     clientId = forwardedFor ? forwardedFor.split(",")[0].trim() : "anonymous";
 
@@ -171,7 +181,7 @@ export async function POST(req: NextRequest) {
     // Groq request with retry/fallback
     let completion;
     try {
-      completion = await groq.chat.completions.create({
+      completion = await groqClient.chat.completions.create({
         model: DEFAULT_MODEL,
         messages,
         temperature: 0.8,
@@ -186,7 +196,7 @@ export async function POST(req: NextRequest) {
       if (DEFAULT_MODEL !== FALLBACK_MODEL) {
         console.log("Attempting fallback model:", FALLBACK_MODEL);
         try {
-          completion = await groq.chat.completions.create({
+          completion = await groqClient.chat.completions.create({
             model: FALLBACK_MODEL,
             messages,
             temperature: 0.8,
@@ -215,6 +225,19 @@ export async function POST(req: NextRequest) {
     });
   } catch (error: any) {
     const responseTime = Date.now() - startTime;
+    
+    // Handle specific environment variable error
+    if (error.message.includes("GROQ_API_KEY")) {
+      return NextResponse.json(
+        {
+          response: "Service configuration error. Please contact support.",
+          error: "SERVICE_UNAVAILABLE",
+          metadata: { responseTime, timestamp: new Date().toISOString() },
+        },
+        { status: 503 }
+      );
+    }
+    
     return NextResponse.json(
       {
         response: "I'm having trouble connecting right now. Please try again later! 🤯",
