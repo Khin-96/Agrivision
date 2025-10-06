@@ -37,7 +37,7 @@ export const authOptions: NextAuthOptions = {
           id: user.id,
           email: user.email,
           name: user.name,
-          role: user.role as "farmer" | "buyer", // Add type assertion here
+          role: user.role as "farmer" | "buyer",
           idVerified: user.idVerified,
           image: user.image,
           idFrontUrl: user.idFrontUrl,
@@ -54,7 +54,8 @@ export const authOptions: NextAuthOptions = {
         try {
           let selectedRole: "buyer" | "farmer" = "buyer";
 
-          if (account.callbackUrl) {
+          // Safely handle callbackUrl - it might be an object or string
+          if (account.callbackUrl && typeof account.callbackUrl === 'string') {
             try {
               const url = new URL(account.callbackUrl);
               const roleParam = url.searchParams.get("role");
@@ -80,6 +81,12 @@ export const authOptions: NextAuthOptions = {
                 authProvider: "google",
                 image: user.image || null,
               },
+            });
+          } else {
+            // Update existing user's role if needed
+            await prisma.user.update({
+              where: { email: user.email! },
+              data: { role: selectedRole },
             });
           }
 
