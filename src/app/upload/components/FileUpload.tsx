@@ -197,13 +197,10 @@ export default function FileUpload({ onAnalysisComplete, onVisionContextUpdate }
   };
 
   /**
-   * Handles file selection with comprehensive validation
+   * Shared file processing logic for both file input and drag/drop
    */
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>, type: 'image' | 'video') => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    console.log(`File selected:`, {
+  const processFile = (file: File, type: 'image' | 'video') => {
+    console.log(`Processing file:`, {
       name: file.name,
       size: file.size,
       type: file.type,
@@ -268,6 +265,16 @@ export default function FileUpload({ onAnalysisComplete, onVisionContextUpdate }
     // Clear any existing errors and proceed
     setUploadProgress({ progress: 0, status: 'idle' });
     handleFileUpload(file, type);
+  };
+
+  /**
+   * Handles file selection with comprehensive validation
+   */
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>, type: 'image' | 'video') => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    processFile(file, type);
     
     // Reset input value to allow re-uploading the same file
     e.target.value = '';
@@ -283,10 +290,7 @@ export default function FileUpload({ onAnalysisComplete, onVisionContextUpdate }
 
     console.log('File dropped:', { name: file.name, type: file.type });
 
-    // Simulate file input change event
-    handleFileSelect({
-      target: { files: [file] }
-    } as React.ChangeEvent<HTMLInputElement>, type);
+    processFile(file, type);
   };
 
   const handleDragOver = (e: React.DragEvent) => e.preventDefault();
