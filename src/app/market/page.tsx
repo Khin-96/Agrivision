@@ -65,16 +65,16 @@ export default function MarketplacePage() {
       const existingItem = prevItems.find(item => item.id === product.id);
       if (existingItem) {
         return prevItems.map(item =>
-          item.id === product.id ? { ...item, cartQuantity: item.cartQuantity + 1 } : item
+          item.id === product.id ? { ...item, quantity: item.quantity + 1 } : item
         );
       }
       return [
         ...prevItems,
         {
           ...product,
-          cartQuantity: 1,
-          image: product.images[0] || '/placeholder-product.jpg'
-        }
+          quantity: 1,
+          image: product.images[0] || '/placeholder-product.jpg',
+        },
       ];
     });
     setIsCartOpen(true);
@@ -86,9 +86,7 @@ export default function MarketplacePage() {
       return;
     }
     setCartItems(prevItems =>
-      prevItems.map(item =>
-        item.id === id ? { ...item, cartQuantity: quantity } : item
-      )
+      prevItems.map(item => (item.id === id ? { ...item, quantity } : item))
     );
   };
 
@@ -96,7 +94,7 @@ export default function MarketplacePage() {
     setCartItems(prevItems => prevItems.filter(item => item.id !== id));
   };
 
-  const cartTotal = cartItems.reduce((total, item) => total + item.cartQuantity, 0);
+  const cartTotal = cartItems.reduce((total, item) => total + item.quantity, 0);
 
   // Loader
   if (authLoading || loading) {
@@ -159,7 +157,7 @@ export default function MarketplacePage() {
         <div className="absolute inset-0 bg-black/40 z-10"></div>
         <div className="relative z-20 flex flex-col items-center justify-center h-full text-center px-6">
           <h1 className="text-4xl sm:text-5xl font-extrabold text-white">
-            Farmer's <span className="text-green-400">Marketplace</span>
+            Farmer&apos;s <span className="text-green-400">Marketplace</span>
           </h1>
           <p className="mt-4 max-w-2xl text-lg text-gray-200">
             Buy fresh produce directly from local farmers or sell your harvest.
