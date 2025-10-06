@@ -31,7 +31,8 @@ export async function POST(request: NextRequest): Promise<NextResponse<AnalysisR
       return NextResponse.json({ success: false, error: 'No file provided' }, { status: 400 });
     }
 
-    if (!type || !['image', 'video'].includes(type)) {
+    // Validate and narrow the type
+    if (type !== 'image' && type !== 'video') {
       return NextResponse.json(
         { success: false, error: 'Invalid or missing type. Must be "image" or "video"' },
         { status: 400 }
@@ -74,6 +75,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<AnalysisR
       await writeFile(filePath, buffer);
 
       // Analyze the content with Gemini AI
+      // Type is now properly narrowed to "image" | "video"
       const analysisResult = await analyzeContent(file, type);
 
       // Return successful response
