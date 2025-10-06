@@ -1,5 +1,3 @@
-//src/app/market/page.tsx
-
 'use client';
 
 import Layout from '@/components/layout/Layout';
@@ -11,6 +9,7 @@ import { ShoppingCart, User, PlusCircle, ShoppingBag, Store, Star } from 'lucide
 import { useAuth } from '@/contexts/AuthContext';
 import { signIn } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
+import { CartItem } from '@/types/cart';
 
 interface Product {
   id: string;
@@ -27,10 +26,6 @@ interface Product {
   rating: number;
   reviews: number;
   status: 'Available' | 'Out of Stock' | 'Restocked' | 'Limited' | 'Coming Soon';
-}
-
-interface CartItem extends Product {
-  cartQuantity: number;
 }
 
 export default function MarketplacePage() {
@@ -73,7 +68,12 @@ export default function MarketplacePage() {
           item.id === product.id ? { ...item, cartQuantity: item.cartQuantity + 1 } : item
         );
       }
-      return [...prevItems, { ...product, cartQuantity: 1 }];
+      // Create CartItem from Product with all required fields
+      return [...prevItems, { 
+        ...product, 
+        cartQuantity: 1,
+        image: product.images[0] || '/placeholder-product.jpg'
+      }];
     });
     setIsCartOpen(true);
   };
