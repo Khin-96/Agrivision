@@ -1,4 +1,3 @@
-// src/app/upload/page.tsx//
 'use client';
 
 import React, { useState } from 'react';
@@ -7,6 +6,7 @@ import FileUpload from './components/FileUpload';
 import Vision from './components/Vision';
 import { AnalysisResponse } from '@/lib/api';
 import Layout from '@/components/layout/Layout';
+import Image from 'next/image';
 
 interface PageState {
   currentAnalysis: AnalysisResponse | null;
@@ -23,10 +23,6 @@ export default function UploadPage() {
     language: 'english'
   });
 
-  /**
-   * Handles when Gemini analysis is complete
-   * Updates the current analysis and prepares Vision context
-   */
   const handleAnalysisComplete = (result: AnalysisResponse) => {
     console.log('Analysis completed:', {
       success: result.success,
@@ -42,10 +38,6 @@ export default function UploadPage() {
     }));
   };
 
-  /**
-   * Handles Vision context updates from FileUpload
-   * This is called when new analysis results are ready
-   */
   const handleVisionContextUpdate = (context: string) => {
     console.log('Updating Vision context:', {
       contextLength: context.length,
@@ -58,9 +50,6 @@ export default function UploadPage() {
     }));
   };
 
-  /**
-   * Toggles language between English and Swahili
-   */
   const toggleLanguage = () => {
     setPageState(prev => {
       const newLanguage = prev.language === 'english' ? 'swahili' : 'english';
@@ -72,9 +61,6 @@ export default function UploadPage() {
     });
   };
 
-  /**
-   * Toggles Vision AI visibility
-   */
   const toggleVision = () => {
     setPageState(prev => ({
       ...prev,
@@ -82,39 +68,23 @@ export default function UploadPage() {
     }));
   };
 
-  /**
-   * Additional context update handler for Vision component
-   */
   const handleContextUpdate = (context: string) => {
     console.log('Vision context updated internally:', context.length);
-    // This can be used for additional logging or state management
   };
 
   return (
     <Layout>
       <div className="min-h-screen bg-white">
-        {/* Toast notifications container */}
         <Toaster 
           position="top-right"
           toastOptions={{
             duration: 4000,
-            style: {
-              background: '#10b981',
-              color: '#ffffff',
-            },
-            success: {
-              style: {
-                background: '#10b981',
-              },
-            },
-            error: {
-              style: {
-                background: '#ef4444',
-              },
-            },
+            style: { background: '#10b981', color: '#ffffff' },
+            success: { style: { background: '#10b981' } },
+            error: { style: { background: '#ef4444' } },
           }}
         />
-        
+
         {/* Header */}
         <div className="container mx-auto px-4 py-8">
           <div className="text-center mb-8">
@@ -148,12 +118,12 @@ export default function UploadPage() {
             />
 
             {/* Analysis Results Summary */}
-            {pageState.currentAnalysis && pageState.currentAnalysis.success && (
+            {pageState.currentAnalysis?.success && (
               <div className="mt-8 bg-white rounded-xl shadow-lg p-6 border border-gray-200">
                 <h3 className="text-lg font-semibold text-green-800 mb-4">
                   {pageState.language === 'swahili' ? 'Muhtasari wa Uchambuzi' : 'Analysis Summary'}
                 </h3>
-                
+
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
                   {pageState.currentAnalysis.categories && (
                     <div className="bg-blue-50 p-4 rounded-lg border border-blue-100">
@@ -165,7 +135,7 @@ export default function UploadPage() {
                       </p>
                     </div>
                   )}
-                  
+
                   {pageState.currentAnalysis.suggestions && (
                     <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-100">
                       <h4 className="font-medium text-yellow-800 mb-2">
@@ -178,7 +148,7 @@ export default function UploadPage() {
                       </p>
                     </div>
                   )}
-                  
+
                   {pageState.currentAnalysis.risks && (
                     <div className="bg-red-50 p-4 rounded-lg border border-red-100">
                       <h4 className="font-medium text-red-800 mb-2">
@@ -191,7 +161,7 @@ export default function UploadPage() {
                       </p>
                     </div>
                   )}
-                  
+
                   {pageState.currentAnalysis.didYouKnow && (
                     <div className="bg-purple-50 p-4 rounded-lg border border-purple-100">
                       <h4 className="font-medium text-purple-800 mb-2">
@@ -206,7 +176,6 @@ export default function UploadPage() {
                   )}
                 </div>
 
-                {/* Analysis Text Preview */}
                 {pageState.currentAnalysis.analysis && (
                   <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
                     <h4 className="font-medium text-gray-800 mb-2">
@@ -224,128 +193,25 @@ export default function UploadPage() {
                 )}
               </div>
             )}
-
-            {/* Vision AI Toggle Button */}
-            <div className="mt-8 text-center">
-              <button
-                onClick={toggleVision}
-                className={`px-6 py-3 rounded-lg font-medium transition-colors shadow-lg ${
-                  pageState.showVision 
-                    ? 'bg-gray-600 hover:bg-gray-700 text-white' 
-                    : 'bg-green-600 hover:bg-green-700 text-white'
-                }`}
-              >
-                {pageState.showVision 
-                  ? (pageState.language === 'swahili' ? 'Ficha Vision AI' : 'Hide Vision AI')
-                  : (pageState.language === 'swahili' ? 'Onyesha Vision AI' : 'Show Vision AI')
-                }
-              </button>
-            </div>
-
-            {/* Features Section - Professional Squares Layout */}
-            <div className="mt-12">
-              <h2 className="text-2xl font-bold text-center text-green-800 mb-8">
-                {pageState.language === 'swahili' ? 'Vipengele vya Vision AI' : 'Vision AI Features'}
-              </h2>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {/* Deep Analysis Feature */}
-                <div className="bg-white rounded-xl shadow-md p-6 border border-gray-200 hover:shadow-lg transition-shadow">
-                  <div className="bg-green-100 w-14 h-14 rounded-lg flex items-center justify-center mb-4">
-                    <span className="text-2xl">🧠</span>
-                  </div>
-                  <h3 className="text-lg font-semibold text-green-800 mb-2">
-                    {pageState.language === 'swahili' ? 'Uchambuzi wa Kina' : 'Deep Analysis'}
-                  </h3>
-                  <p className="text-gray-600">
-                    {pageState.language === 'swahili'
-                      ? 'Ainisha magonjwa, wadudu na hali ya mazao kwa usahihi wa hali ya juu'
-                      : 'Identify diseases, pests, and crop conditions with high accuracy'}
-                  </p>
-                </div>
-
-                {/* Personal Schedules Feature */}
-                <div className="bg-white rounded-xl shadow-md p-6 border border-gray-200 hover:shadow-lg transition-shadow">
-                  <div className="bg-blue-100 w-14 h-14 rounded-lg flex items-center justify-center mb-4">
-                    <span className="text-2xl">📅</span>
-                  </div>
-                  <h3 className="text-lg font-semibold text-blue-800 mb-2">
-                    {pageState.language === 'swahili' ? 'Ratiba za Kibinafsi' : 'Personal Schedules'}
-                  </h3>
-                  <p className="text-gray-600">
-                    {pageState.language === 'swahili'
-                      ? 'Pata ratiba maalum za kupanda, kumwagilia na kuvuna kulingana na hali ya mazao yako'
-                      : 'Get customized planting, irrigation and harvest schedules based on your crop conditions'}
-                  </p>
-                </div>
-
-                {/* Real-time Advice Feature */}
-                <div className="bg-white rounded-xl shadow-md p-6 border border-gray-200 hover:shadow-lg transition-shadow">
-                  <div className="bg-yellow-100 w-14 h-14 rounded-lg flex items-center justify-center mb-4">
-                    <span className="text-2xl">💡</span>
-                  </div>
-                  <h3 className="text-lg font-semibold text-yellow-800 mb-2">
-                    {pageState.language === 'swahili' ? 'Ushauri wa Papo Hapo' : 'Real-time Advice'}
-                  </h3>
-                  <p className="text-gray-600">
-                    {pageState.language === 'swahili'
-                      ? 'Pata majibu ya haraka kwa maswali yako yote ya kilimo kutoka kwa AI mtaalamu'
-                      : 'Get instant answers to all your farming questions from expert AI'}
-                  </p>
-                </div>
-
-                {/* Disease Prevention Feature */}
-                <div className="bg-white rounded-xl shadow-md p-6 border border-gray-200 hover:shadow-lg transition-shadow">
-                  <div className="bg-red-100 w-14 h-14 rounded-lg flex items-center justify-center mb-4">
-                    <span className="text-2xl">🛡️</span>
-                  </div>
-                  <h3 className="text-lg font-semibold text-red-800 mb-2">
-                    {pageState.language === 'swahili' ? 'Kinga ya Magonjwa' : 'Disease Prevention'}
-                  </h3>
-                  <p className="text-gray-600">
-                    {pageState.language === 'swahili'
-                      ? 'Tambua dalili za magonjwa mapema na upate ushauri wa kuzuia'
-                      : 'Identify disease symptoms early and get preventive advice'}
-                  </p>
-                </div>
-
-                {/* Growth Monitoring Feature */}
-                <div className="bg-white rounded-xl shadow-md p-6 border border-gray-200 hover:shadow-lg transition-shadow">
-                  <div className="bg-purple-100 w-14 h-14 rounded-lg flex items-center justify-center mb-4">
-                    <span className="text-2xl">📈</span>
-                  </div>
-                  <h3 className="text-lg font-semibold text-purple-800 mb-2">
-                    {pageState.language === 'swahili' ? 'Ufuatiliaji wa Ukuaji' : 'Growth Monitoring'}
-                  </h3>
-                  <p className="text-gray-600">
-                    {pageState.language === 'swahili'
-                      ? 'Fuatilia maendeleo ya mazao yako kwa muda na upate mapendekezo ya kuboresha'
-                      : 'Track your crop progress over time and get improvement recommendations'}
-                  </p>
-                </div>
-
-                {/* Weather Adaptation Feature */}
-                <div className="bg-white rounded-xl shadow-md p-6 border border-gray-200 hover:shadow-lg transition-shadow">
-                  <div className="bg-cyan-100 w-14 h-14 rounded-lg flex items-center justify-center mb-4">
-                    <span className="text-2xl">🌦️</span>
-                  </div>
-                  <h3 className="text-lg font-semibold text-cyan-800 mb-2">
-                    {pageState.language === 'swahili' ? 'Ubadilishaji wa Hali ya Hewa' : 'Weather Adaptation'}
-                  </h3>
-                  <p className="text-gray-600">
-                    {pageState.language === 'swahili'
-                      ? 'Pata ushauri maalum unaozingatia hali ya hewa ya eneo lako na mabadiliko ya tabianchi'
-                      : 'Get tailored advice considering your local weather and climate changes'}
-                  </p>
-                </div>
-              </div>
-            </div>
           </div>
         </div>
 
-        {/* Vision AI Widget */}
+        {/* Avatar Button for Vision AI */}
+        <div className="fixed bottom-6 right-6 z-50">
+          <button onClick={toggleVision} className="focus:outline-none">
+            <Image
+              src="/avatar.png" 
+              alt="Avatar"
+              width={64}
+              height={64}
+              className="rounded-full ring-2 ring-green-500 hover:ring-green-700 transition-all"
+            />
+          </button>
+        </div>
+
+        {/* Vision AI Widget (Responsive Height) */}
         {pageState.showVision && (
-          <div className="fixed bottom-6 right-6 w-96 h-96 bg-white rounded-xl shadow-2xl border border-gray-200 z-50 overflow-hidden">
+          <div className="fixed bottom-20 right-6 w-96 h-[80vh] max-h-[500px] bg-white rounded-xl shadow-2xl border border-gray-200 z-50 overflow-hidden">
             <Vision 
               analysisResults={pageState.currentAnalysis ? [pageState.currentAnalysis] : []}
               language={pageState.language}
@@ -354,7 +220,6 @@ export default function UploadPage() {
               onToggle={toggleVision}
               analysisContext={pageState.visionContext}
               onContextUpdate={handleContextUpdate}
-              widgetMode={true}
             />
           </div>
         )}

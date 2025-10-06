@@ -1,8 +1,8 @@
-// src/app/upload/components/Vision.tsx
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Loader2, AlertCircle, Bot, X, Minimize2, Maximize2, FileText, Lightbulb } from 'lucide-react';
+import Image from 'next/image';
+import { Send, Loader2, X, Minimize2, Maximize2, Bot } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 
 interface ChatMessage {
@@ -47,15 +47,9 @@ export default function Vision({
 
   useEffect(() => {
     if (analysisContext && analysisContext !== currentContext) {
-      console.log('Vision context updated:', {
-        previousLength: currentContext.length,
-        newLength: analysisContext.length,
-        updateCount: contextUpdateCount + 1
-      });
-
       setCurrentContext(analysisContext);
       setContextUpdateCount(prev => prev + 1);
-      
+
       const contextMessage: ChatMessage = {
         id: `context-${Date.now()}`,
         role: 'assistant',
@@ -67,23 +61,16 @@ export default function Vision({
       };
 
       setChatMessages(prev => [...prev, contextMessage]);
-      
-      setTimeout(() => {
-        toast.success(
-          language === 'swahili' 
-            ? 'Vision AI imepata uchambuzi wako mpya!'
-            : 'Vision AI has your new analysis ready!',
-          { duration: 3000 }
-        );
-      }, 0);
+      toast.success(
+        language === 'swahili' 
+          ? 'Vision AI imepata uchambuzi wako mpya!'
+          : 'Vision AI has your new analysis ready!',
+        { duration: 3000 }
+      );
 
-      if (onContextUpdate) {
-        onContextUpdate(analysisContext);
-      }
+      if (onContextUpdate) onContextUpdate(analysisContext);
     }
   }, [analysisContext, currentContext, language, onContextUpdate, contextUpdateCount]);
-
-  const toggleMinimized = () => setIsMinimized(prev => !prev);
 
   useEffect(() => {
     if (chatContainerRef.current) {
@@ -91,66 +78,29 @@ export default function Vision({
     }
   }, [chatMessages]);
 
+  const toggleMinimized = () => setIsMinimized(prev => !prev);
+
   const getSuggestedQuestions = (): string[] => {
     if (!currentContext) {
       return language === 'swahili' 
-        ? [
-            'Ninawezaje kuboresha mazao yangu?',
-            'Je, kuna magonjwa yoyote katika shamba langu?',
-            'Wakati gani mzuri wa kupanda?'
-          ]
-        : [
-            'How can I improve my crop yields?',
-            'Are there any diseases in my farm?',
-            'When is the best time to plant?'
-          ];
+        ? ['Ninawezaje kuboresha mazao yangu?', 'Je, kuna magonjwa yoyote katika shamba langu?', 'Wakati gani mzuri wa kupanda?']
+        : ['How can I improve my crop yields?', 'Are there any diseases in my farm?', 'When is the best time to plant?'];
     }
 
     const suggestions: string[] = [];
-    
-    if (currentContext.toLowerCase().includes('risk')) {
-      suggestions.push(
-        language === 'swahili' 
-          ? 'Ni hatari gani kuu nimezipata?'
-          : 'What are the main risks identified?'
-      );
-    }
-    
-    if (currentContext.toLowerCase().includes('recommendation') || currentContext.toLowerCase().includes('suggest')) {
-      suggestions.push(
-        language === 'swahili' 
-          ? 'Ni mapendekezo gani ya haraka?'
-          : 'What are the immediate recommendations?'
-      );
-    }
-    
-    if (currentContext.toLowerCase().includes('schedule') || currentContext.toLowerCase().includes('timing')) {
-      suggestions.push(
-        language === 'swahili' 
-          ? 'Ratiba gani ninafaa kufuata?'
-          : 'What schedule should I follow?'
-      );
-    }
+    const lcContext = currentContext.toLowerCase();
 
-    suggestions.push(
-      language === 'swahili' 
-        ? 'Niliendelee vipi?'
-        : 'How should I proceed?'
-    );
+    if (lcContext.includes('risk')) suggestions.push(language === 'swahili' ? 'Ni hatari gani kuu nimezipata?' : 'What are the main risks identified?');
+    if (lcContext.includes('recommendation') || lcContext.includes('suggest')) suggestions.push(language === 'swahili' ? 'Ni mapendekezo gani ya haraka?' : 'What are the immediate recommendations?');
+    if (lcContext.includes('schedule') || lcContext.includes('timing')) suggestions.push(language === 'swahili' ? 'Ratiba gani ninafaa kufuata?' : 'What schedule should I follow?');
 
+    suggestions.push(language === 'swahili' ? 'Niliendelee vipi?' : 'How should I proceed?');
     return suggestions.slice(0, 3);
   };
 
   const sendMessage = async (messageContent?: string) => {
     const messageToSend = messageContent || userInput.trim();
     if (!messageToSend || isLoadingResponse) return;
-
-    console.log('Sending message to Vision:', {
-      message: messageToSend,
-      hasContext: !!currentContext,
-      contextLength: currentContext.length,
-      language
-    });
 
     const newMsg: ChatMessage = {
       id: Date.now().toString(),
@@ -166,7 +116,7 @@ export default function Vision({
 
     try {
       const enhancedMessage = currentContext 
-        ? `ANALYSIS CONTEXT (Use this to answer questions about the farmer's specific situation):\n${currentContext}\n\nUSER QUESTION: ${messageToSend}`
+        ? `ANALYSIS CONTEXT:\n${currentContext}\n\nUSER QUESTION: ${messageToSend}`
         : messageToSend;
 
       const response = await fetch('/api/farm-activities/chat', {
@@ -175,28 +125,14 @@ export default function Vision({
         body: JSON.stringify({
           message: enhancedMessage,
           language,
-          chatHistory: chatMessages.slice(-8).map(m => ({ 
-            role: m.role, 
-            content: m.content 
-          })),
+          chatHistory: chatMessages.slice(-8).map(m => ({ role: m.role, content: m.content })),
           hasAnalysisContext: !!currentContext
         }),
       });
 
-      if (!response.ok) {
-        throw new Error(`API error: ${response.status} - ${response.statusText}`);
-      }
-
+      if (!response.ok) throw new Error('API error');
       const data = await response.json();
-
-      if (!data.response) {
-        throw new Error('Empty response from Vision AI');
-      }
-
-      console.log('Vision AI response received:', {
-        responseLength: data.response.length,
-        hasContext: !!currentContext
-      });
+      if (!data.response) throw new Error('Empty response');
 
       const botMsg: ChatMessage = {
         id: (Date.now() + 1).toString(),
@@ -206,50 +142,19 @@ export default function Vision({
         isTyping: true,
         hasContext: !!currentContext
       };
-
       setChatMessages(prev => [...prev, botMsg]);
 
-      const response_text = data.response;
-      for (let i = 0; i <= response_text.length; i++) {
+      for (let i = 0; i <= data.response.length; i++) {
         setChatMessages(prev =>
-          prev.map(m =>
-            m.id === botMsg.id 
-              ? { ...m, content: response_text.slice(0, i) } 
-              : m
-          )
+          prev.map(m => m.id === botMsg.id ? { ...m, content: data.response.slice(0, i) } : m)
         );
         await sleep(20);
       }
 
-      setChatMessages(prev =>
-        prev.map(m => 
-          m.id === botMsg.id 
-            ? { ...m, isTyping: false } 
-            : m
-        )
-      );
-
-    } catch (error: any) {
-      console.error('Vision AI chat error:', error);
-
-      const errorMessage = language === 'swahili' 
-        ? 'Hitilafu! Jaribu tena.' 
-        : 'An error occurred. Please try again.';
-
-      setChatError(errorMessage);
-      
-      setChatMessages(prev => [...prev, {
-        id: (Date.now() + 2).toString(),
-        role: 'assistant',
-        content: language === 'swahili' 
-          ? 'Samahani, kuna hitilafu ya kiufundi. Tafadhali jaribu tena baadaye.' 
-          : 'Apologies, a technical error occurred. Please try again later.',
-        timestamp: new Date(),
-      }]);
-
-      setTimeout(() => {
-        toast.error(errorMessage, { duration: 3000 });
-      }, 0);
+      setChatMessages(prev => prev.map(m => m.id === botMsg.id ? { ...m, isTyping: false } : m));
+    } catch (error) {
+      setChatError(language === 'swahili' ? 'Hitilafu! Jaribu tena.' : 'An error occurred. Please try again.');
+      toast.error(language === 'swahili' ? 'Hitilafu! Jaribu tena.' : 'An error occurred. Please try again.', { duration: 3000 });
     } finally {
       setIsLoadingResponse(false);
     }
@@ -265,13 +170,7 @@ export default function Vision({
   const clearChat = () => {
     setChatMessages([]);
     setChatError(null);
-    console.log('Chat history cleared');
-    setTimeout(() => {
-      toast.success(
-        language === 'swahili' ? 'Mazungumzo yamefutwa' : 'Chat cleared',
-        { duration: 2000 }
-      );
-    }, 0);
+    toast.success(language === 'swahili' ? 'Mazungumzo yamefutwa' : 'Chat cleared', { duration: 2000 });
   };
 
   if (!isOpen) return null;
@@ -279,242 +178,101 @@ export default function Vision({
   const suggestedQuestions = getSuggestedQuestions();
 
   return (
-    <div className={`fixed bottom-4 right-4 z-40 bg-white shadow-lg rounded-lg flex flex-col border border-gray-200 transition-all duration-300 ${
-      isMinimized ? 'h-14 w-80' : 'h-[600px] w-96'
-    }`}>
-      <div className="bg-gray-800 text-white px-4 py-3 rounded-t-lg flex justify-between items-center">
-        <div className="flex items-center space-x-2">
-          <Bot size={20} />
-          <div>
+    <div
+      className={`fixed right-6 z-50 flex flex-col border border-gray-200 shadow-2xl bg-white transition-all duration-300`}
+      style={{
+        bottom: '80px', // Adjust to navbar height
+        width: '384px',
+        height: 'calc(100vh - 80px)'
+      }}
+    >
+      {/* Header */}
+      {!isMinimized && (
+        <div className="bg-green-800 text-white px-4 py-3 flex justify-between items-center">
+          <div className="flex items-center space-x-2">
+            <Bot size={20} />
             <span className="font-semibold">Vision AI</span>
-            {currentContext && (
-              <div className="flex items-center text-gray-300 text-xs mt-0.5">
-                <FileText size={12} className="mr-1" />
-                <span>Analysis Ready</span>
-              </div>
+          </div>
+          <div className="flex items-center space-x-2">
+            {onLanguageToggle && (
+              <button onClick={onLanguageToggle} className="p-1 text-white hover:text-gray-200 rounded-md text-xs font-medium">
+                {language === 'english' ? 'EN' : 'SW'}
+              </button>
             )}
+            <button onClick={clearChat} className="p-1 text-white hover:text-gray-200 rounded-md text-xs">Clear</button>
+            <button onClick={toggleMinimized} className="p-1 text-white hover:text-gray-200 rounded-md">
+              <Minimize2 size={16} />
+            </button>
+            {onToggle && <button onClick={onToggle} className="p-1 text-white hover:text-gray-200 rounded-md"><X size={16} /></button>}
           </div>
         </div>
-        <div className="flex items-center space-x-2">
-          {onLanguageToggle && (
-            <button 
-              onClick={onLanguageToggle} 
-              className="p-1 text-gray-300 hover:text-white rounded-md transition-colors text-xs font-medium"
-              title="Toggle language"
-            >
-              {language === 'english' ? 'EN' : 'SW'}
-            </button>
-          )}
-          <button 
-            onClick={clearChat}
-            className="p-1 text-gray-300 hover:text-white rounded-md transition-colors text-xs"
-            title="Clear chat"
-          >
-            Clear
-          </button>
-          <button 
-            onClick={toggleMinimized}
-            className="p-1 text-gray-300 hover:text-white rounded-md transition-colors"
-            title={isMinimized ? 'Expand' : 'Minimize'}
-          >
-            {isMinimized ? <Maximize2 size={16} /> : <Minimize2 size={16} />}
-          </button>
-          {onToggle && (
-            <button 
-              onClick={onToggle}
-              className="p-1 text-gray-300 hover:text-white rounded-md transition-colors"
-              title="Close"
-            >
-              <X size={16} />
-            </button>
-          )}
-        </div>
-      </div>
+      )}
 
+      {/* Minimized avatar */}
+      {isMinimized && (
+        <div className="flex justify-center items-center bg-white border-t border-gray-200 p-1">
+          <button onClick={toggleMinimized} className="focus:outline-none">
+            <Image src="/avatar.png" alt="Vision AI" width={48} height={48} className="rounded-full" />
+          </button>
+        </div>
+      )}
+
+      {/* Chat */}
       {!isMinimized && (
         <>
-          <div ref={chatContainerRef} className="flex-1 overflow-y-auto p-4 space-y-3 bg-white">
+          <div ref={chatContainerRef} className="flex-1 overflow-y-auto p-4 space-y-3">
             {chatMessages.length === 0 ? (
-              <div className="text-center text-gray-500 mt-4">
-                <div className="mx-auto mb-3 bg-gray-100 p-3 rounded-full w-16 h-16 flex items-center justify-center">
-                  <Bot size={28} className="text-gray-600" />
+              <div className="flex flex-col items-center justify-center h-full text-center text-gray-700">
+                <div className="mb-3 w-20 h-20 relative">
+                  <Image src="/avatar.png" alt="Vision AI" fill className="rounded-full object-cover" />
                 </div>
-                <p className="text-gray-700 text-sm font-medium mb-1">Vision AI Assistant</p>
-                <p className="text-xs text-gray-500 mb-4">
-                  {language === 'swahili' 
-                    ? 'Karibu! Ninawezaje kukusaidia leo?' 
-                    : 'How can I assist with your farm analysis?'}
-                </p>
-                
-                {currentContext && (
-                  <div className="bg-blue-50 border border-blue-100 p-3 rounded-lg mb-4">
-                    <div className="flex items-center justify-center text-blue-600 mb-2">
-                      <Lightbulb size={16} className="mr-1" />
-                      <span className="text-xs font-medium">
-                        {language === 'swahili' ? 'Uchambuzi Upo Tayari' : 'Analysis Context Ready'}
-                      </span>
-                    </div>
-                    <p className="text-xs text-blue-600">
-                      {language === 'swahili' 
-                        ? 'Ninafahamu uchambuzi wako. Uliza chochote!'
-                        : 'I have your analysis context. Ask me anything!'}
-                    </p>
-                  </div>
-                )}
-
+                <p className="font-medium">{language === 'swahili' ? 'Karibu! Ninawezaje kukusaidia leo?' : 'Hello! How can I assist your farm analysis?'}</p>
                 {suggestedQuestions.length > 0 && (
-                  <div className="text-left">
-                    <p className="text-xs text-gray-600 mb-2 font-medium">
-                      {language === 'swahili' ? 'Maswali ya Mfano:' : 'Quick Questions:'}
-                    </p>
-                    <div className="space-y-2">
-                      {suggestedQuestions.map((question, index) => (
-                        <button
-                          key={index}
-                          onClick={() => sendMessage(question)}
-                          disabled={isLoadingResponse}
-                          className="w-full text-left text-xs p-2 bg-gray-50 border border-gray-200 rounded-md hover:bg-gray-100 hover:border-gray-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-gray-700"
-                        >
-                          {question}
-                        </button>
-                      ))}
-                    </div>
+                  <div className="mt-4 flex flex-col space-y-2">
+                    {suggestedQuestions.map((q, i) => (
+                      <button key={i} onClick={() => sendMessage(q)} className="px-3 py-1 bg-green-50 text-green-800 text-xs rounded-lg hover:bg-green-100">{q}</button>
+                    ))}
                   </div>
                 )}
               </div>
             ) : (
               chatMessages.map(msg => (
                 <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                  <div className={`max-w-xs p-3 rounded-lg break-words relative ${
-                    msg.role === 'user' 
-                      ? 'bg-gray-800 text-white rounded-br-md' 
-                      : `bg-gray-100 text-gray-800 border border-gray-200 rounded-bl-md ${
-                          msg.hasContext ? 'border-l-4 border-l-blue-400' : ''
-                        }`
+                  <div className={`max-w-xs p-3 break-words relative ${
+                    msg.role === 'user' ? 'bg-green-800 text-white rounded-br-md' : 'bg-green-50 text-green-900 border border-green-200 rounded-bl-md'
                   }`}>
-                    {msg.role === 'assistant' && msg.hasContext && (
-                      <div className="absolute -top-2 -left-2 bg-blue-500 text-white text-xs px-1.5 py-0.5 rounded-full">
-                        <FileText size={10} />
-                      </div>
-                    )}
-                    
                     <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
-                    
                     {msg.isTyping && (
                       <div className="flex space-x-1 mt-2">
-                        <div className="w-1 h-1 bg-gray-400 rounded-full animate-bounce"></div>
-                        <div className="w-1 h-1 bg-gray-400 rounded-full animate-bounce delay-100"></div>
-                        <div className="w-1 h-1 bg-gray-400 rounded-full animate-bounce delay-200"></div>
+                        <div className="w-1 h-1 bg-green-400 rounded-full animate-bounce"></div>
+                        <div className="w-1 h-1 bg-green-400 rounded-full animate-bounce delay-100"></div>
+                        <div className="w-1 h-1 bg-green-400 rounded-full animate-bounce delay-200"></div>
                       </div>
                     )}
-                    
-                    <p className={`text-xs mt-1 text-right ${msg.role === 'user' ? 'text-gray-300' : 'text-gray-500'}`}>
-                      {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </p>
+                    <p className="text-xs mt-1 text-right">{msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
                   </div>
                 </div>
               ))
             )}
-            
-            {isLoadingResponse && (
-              <div className="flex justify-start">
-                <div className="bg-gray-100 border border-gray-200 p-3 rounded-lg rounded-bl-md max-w-xs">
-                  <div className="flex items-center space-x-2">
-                    <Loader2 size={16} className="animate-spin text-gray-600" />
-                    <span className="text-xs text-gray-600">
-                      {language === 'swahili' ? 'Nafikiri...' : 'Thinking...'}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            )}
           </div>
 
-          {chatError && (
-            <div className="mx-4 mt-2 bg-red-50 border border-red-200 p-3 rounded-md flex items-center">
-              <AlertCircle size={16} className="text-red-500 mr-2 flex-shrink-0" />
-              <div className="flex-1">
-                <p className="text-red-700 text-xs font-medium">Connection Error</p>
-                <p className="text-red-600 text-xs">{chatError}</p>
-              </div>
-              <button
-                onClick={() => setChatError(null)}
-                className="text-red-500 hover:text-red-700 ml-2"
-              >
-                <X size={14} />
-              </button>
-            </div>
-          )}
-
-          {currentContext && (
-            <div className="mx-4 mt-2 bg-blue-50 border border-blue-100 p-2 rounded-md">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center text-blue-600">
-                  <FileText size={12} className="mr-1" />
-                  <span className="text-xs font-medium">
-                    {language === 'swahili' ? 'Uchambuzi umepakuliwa' : 'Analysis loaded'}
-                  </span>
-                </div>
-                <span className="text-xs text-blue-500">
-                  {Math.round(currentContext.length / 100) / 10}k chars
-                </span>
-              </div>
-            </div>
-          )}
-
-          <div className="border-t border-gray-200 p-3 bg-white rounded-b-lg">
-            <div className="flex space-x-2">
-              <textarea
-                value={userInput}
-                onChange={e => setUserInput(e.target.value)}
-                onKeyPress={handleKeyPress}
-                placeholder={
-                  currentContext 
-                    ? (language === 'swahili' 
-                        ? 'Uliza kuhusu uchambuzi wako...' 
-                        : 'Ask about your analysis...')
-                    : (language === 'swahili' 
-                        ? 'Andika swali lako hapa...' 
-                        : 'Type your farming question...')
-                }
-                className="flex-1 border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:border-transparent min-h-[44px] max-h-32 overflow-y-auto resize-none text-sm placeholder-gray-500 text-gray-800"
-                disabled={isLoadingResponse}
-                rows={1}
-              />
-              <button
-                onClick={() => sendMessage()}
-                disabled={!userInput.trim() || isLoadingResponse}
-                className="bg-gray-800 text-white p-2 rounded-lg flex items-center justify-center hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors h-11 w-11 flex-shrink-0"
-                title={language === 'swahili' ? 'Tuma ujumbe' : 'Send message'}
-              >
-                {isLoadingResponse ? (
-                  <Loader2 size={16} className="animate-spin" />
-                ) : (
-                  <Send size={16} />
-                )}
-              </button>
-            </div>
-            
-            {suggestedQuestions.length > 0 && chatMessages.length > 0 && (
-              <div className="mt-2 flex flex-wrap gap-1">
-                {suggestedQuestions.slice(0, 2).map((question, index) => (
-                  <button
-                    key={index}
-                    onClick={() => sendMessage(question)}
-                    disabled={isLoadingResponse}
-                    className="text-xs px-2 py-1 bg-gray-100 text-gray-700 rounded-full hover:bg-gray-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed border border-gray-200"
-                  >
-                    {question.length > 25 ? question.substring(0, 25) + '...' : question}
-                  </button>
-                ))}
-              </div>
-            )}
-            
-            <p className="text-xs text-gray-500 mt-1">
-              {language === 'swahili' 
-                ? 'Bonyeza Enter kutuma, Shift+Enter mstari mpya'
-                : 'Press Enter to send, Shift+Enter for new line'}
-            </p>
+          {/* Input */}
+          <div className="border-t border-green-200 p-3 flex space-x-2">
+            <textarea
+              value={userInput}
+              onChange={e => setUserInput(e.target.value)}
+              onKeyPress={handleKeyPress}
+              placeholder={currentContext ? (language === 'swahili' ? 'Uliza kuhusu uchambuzi wako...' : 'Ask about your analysis...') : (language === 'swahili' ? 'Andika swali lako hapa...' : 'Type your question...')}
+              className="flex-1 border border-green-200 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-400 text-sm placeholder-green-400 text-green-900 min-h-[44px] resize-none overflow-y-auto"
+              disabled={isLoadingResponse}
+            />
+            <button
+              onClick={() => sendMessage()}
+              disabled={!userInput.trim() || isLoadingResponse}
+              className="bg-green-800 text-white p-2 flex items-center justify-center hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed h-11 w-11 rounded-lg"
+            >
+              {isLoadingResponse ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+            </button>
           </div>
         </>
       )}
