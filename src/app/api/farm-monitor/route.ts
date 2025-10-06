@@ -73,7 +73,10 @@ async function reverseGeocode(lat: number, lng: number) {
     const payload = await res.json();
     const first = payload.results?.[0];
     const comps = first?.address_components || [];
-    const find = (type: string) => comps.find(c => c.types?.includes(type))?.long_name;
+    
+    // Fixed: Added type annotation for parameter 'c'
+    const find = (type: string) => comps.find((c: any) => c.types?.includes(type))?.long_name;
+    
     const street = find("route") || find("street_address") || "Nearby road";
     const locality = find("locality") || find("sublocality") || find("postal_town");
     const admin = find("administrative_area_level_1") || find("administrative_area_level_2");
@@ -118,7 +121,7 @@ async function getCropType(coords: Coordinate[]): Promise<string> {
       try {
         token = (await client.getAccessToken()).token;
         if (token) break;
-      } catch (err) {
+      } catch (err: any) {
         console.warn(`OAuth token retry ${i + 1} failed:`, err.message);
         await new Promise(res => setTimeout(res, 1000));
       }
@@ -170,7 +173,7 @@ async function getCropType(coords: Coordinate[]): Promise<string> {
       console.warn("EE API returned non-JSON response:", text);
       return "Unknown";
     }
-  } catch (err) {
+  } catch (err: any) {
     console.error("EE crop classification error:", err);
     return "Unknown";
   }
