@@ -104,7 +104,7 @@ export const authOptions: NextAuthOptions = {
       try {
         if (user) {
           token.id = user.id;
-          token.role = user.role;
+          token.role = user.role as "farmer" | "buyer";
           token.idVerified = user.idVerified;
           token.image = user.image;
           token.idFrontUrl = user.idFrontUrl;
@@ -117,7 +117,7 @@ export const authOptions: NextAuthOptions = {
 
           if (dbUser) {
             token.id = dbUser.id;
-            token.role = dbUser.role;
+            token.role = dbUser.role as "farmer" | "buyer"; // Add type assertion here
             token.idVerified = dbUser.idVerified;
             token.image = dbUser.image;
             token.idFrontUrl = dbUser.idFrontUrl;
