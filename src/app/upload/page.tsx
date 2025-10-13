@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import { Toaster } from 'react-hot-toast'; 
 import FileUpload from './components/FileUpload';
 import Vision from './components/Vision';
-import LiveVision from './components/live'; // ✅ Import LiveVision
+import LiveVision from './components/live';
 import { AnalysisResponse } from '@/lib/api';
 import Layout from '@/components/layout/Layout';
 import Image from 'next/image';
@@ -13,7 +13,7 @@ interface PageState {
   currentAnalysis: AnalysisResponse | null;
   visionContext: string;
   showVision: boolean;
-  language: 'english' | 'kiswahili'; // Keep UI internal state
+  language: 'english' | 'kiswahili';
   isLiveMode?: boolean;
 }
 
@@ -75,9 +75,14 @@ export default function UploadPage() {
     console.log('Vision context updated internally:', context.length);
   };
 
-  // ✅ Helper to normalize language for components
-  const getComponentLanguage = () => {
-    return pageState.language === 'kiswahili' ? 'swahili' : pageState.language;
+  // Helper for Vision component (expects 'swahili' not 'kiswahili')
+  const getVisionLanguage = (): 'english' | 'swahili' => {
+    return pageState.language === 'kiswahili' ? 'swahili' : 'english';
+  };
+
+  // Helper for LiveVision component (expects 'kiswahili' not 'swahili')
+  const getLiveVisionLanguage = (): 'english' | 'kiswahili' => {
+    return pageState.language;
   };
 
   return (
@@ -230,7 +235,7 @@ export default function UploadPage() {
           <div className="fixed bottom-20 right-6 w-96 h-[80vh] max-h-[500px] bg-white rounded-xl shadow-2xl border border-gray-200 z-50 overflow-hidden">
             <Vision 
               analysisResults={pageState.currentAnalysis ? [pageState.currentAnalysis] : []}
-              language={getComponentLanguage()} // ✅ normalized
+              language={getVisionLanguage()}
               onLanguageToggle={toggleLanguage}
               isOpen={pageState.showVision}
               onToggle={toggleVision}
@@ -245,7 +250,7 @@ export default function UploadPage() {
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
             <div className="bg-white w-full max-w-lg h-[90vh] rounded-xl overflow-hidden shadow-2xl border border-gray-200 relative">
               <LiveVision
-                language={getComponentLanguage()} // ✅ normalized
+                language={getLiveVisionLanguage()}
                 onClose={() => setPageState(prev => ({ ...prev, isLiveMode: false }))}
               />
             </div>
