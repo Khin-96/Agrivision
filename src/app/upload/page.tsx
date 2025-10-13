@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import { Toaster } from 'react-hot-toast'; 
 import FileUpload from './components/FileUpload';
 import Vision from './components/Vision';
-import LiveVision from './components/live'; // ✅ Fixed import
+import LiveVision from './components/live'; // ✅ Import LiveVision
 import { AnalysisResponse } from '@/lib/api';
 import Layout from '@/components/layout/Layout';
 import Image from 'next/image';
@@ -13,7 +13,7 @@ interface PageState {
   currentAnalysis: AnalysisResponse | null;
   visionContext: string;
   showVision: boolean;
-  language: 'english' | 'kiswahili'; // ✅ Changed from 'swahili' to 'kiswahili'
+  language: 'english' | 'kiswahili'; // Keep UI internal state
   isLiveMode?: boolean;
 }
 
@@ -75,6 +75,11 @@ export default function UploadPage() {
     console.log('Vision context updated internally:', context.length);
   };
 
+  // ✅ Helper to normalize language for components
+  const getComponentLanguage = () => {
+    return pageState.language === 'kiswahili' ? 'swahili' : pageState.language;
+  };
+
   return (
     <Layout>
       <div className="min-h-screen bg-white">
@@ -112,6 +117,7 @@ export default function UploadPage() {
               {pageState.language === 'english' ? 'Switch to Kiswahili' : 'Switch to English'}
             </button>
 
+            {/* Go Live Button */}
             <button
               onClick={() => setPageState(prev => ({ ...prev, isLiveMode: true }))}
               className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2 rounded-full font-medium transition-colors"
@@ -224,7 +230,7 @@ export default function UploadPage() {
           <div className="fixed bottom-20 right-6 w-96 h-[80vh] max-h-[500px] bg-white rounded-xl shadow-2xl border border-gray-200 z-50 overflow-hidden">
             <Vision 
               analysisResults={pageState.currentAnalysis ? [pageState.currentAnalysis] : []}
-              language={pageState.language}
+              language={getComponentLanguage()} // ✅ normalized
               onLanguageToggle={toggleLanguage}
               isOpen={pageState.showVision}
               onToggle={toggleVision}
@@ -234,12 +240,12 @@ export default function UploadPage() {
           </div>
         )}
 
-        {/* ✅ LiveVision Modal */}
+        {/* LiveVision Modal */}
         {pageState.isLiveMode && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
             <div className="bg-white w-full max-w-lg h-[90vh] rounded-xl overflow-hidden shadow-2xl border border-gray-200 relative">
               <LiveVision
-                language={pageState.language === 'swahili' ? 'kiswahili' : pageState.language} // ✅ Normalized
+                language={getComponentLanguage()} // ✅ normalized
                 onClose={() => setPageState(prev => ({ ...prev, isLiveMode: false }))}
               />
             </div>
