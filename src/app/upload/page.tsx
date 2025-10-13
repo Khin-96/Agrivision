@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { Toaster } from 'react-hot-toast'; 
 import FileUpload from './components/FileUpload';
 import Vision from './components/Vision';
+import LiveVision from './components/live'; // ✅ Added import
 import { AnalysisResponse } from '@/lib/api';
 import Layout from '@/components/layout/Layout';
 import Image from 'next/image';
@@ -13,6 +14,7 @@ interface PageState {
   visionContext: string;
   showVision: boolean;
   language: 'english' | 'swahili';
+  isLiveMode?: boolean; // ✅ Added optional field
 }
 
 export default function UploadPage() {
@@ -20,7 +22,8 @@ export default function UploadPage() {
     currentAnalysis: null,
     visionContext: '',
     showVision: false,
-    language: 'english'
+    language: 'english',
+    isLiveMode: false // ✅ Added default
   });
 
   const handleAnalysisComplete = (result: AnalysisResponse) => {
@@ -100,13 +103,21 @@ export default function UploadPage() {
             </p>
           </div>
 
-          {/* Language Toggle Button */}
-          <div className="text-center mb-6">
+          {/* Language + Go Live Buttons */}
+          <div className="text-center mb-6 flex justify-center gap-4 flex-wrap">
             <button
               onClick={toggleLanguage}
               className="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-full font-medium transition-colors"
             >
               {pageState.language === 'english' ? 'Switch to Kiswahili' : 'Switch to English'}
+            </button>
+
+            {/* ✅ New "Go Live" Button */}
+            <button
+              onClick={() => setPageState(prev => ({ ...prev, isLiveMode: true }))}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2 rounded-full font-medium transition-colors"
+            >
+              {pageState.language === 'english' ? '🎥 Go Live' : '🎥 Nenda Moja kwa Moja'}
             </button>
           </div>
 
@@ -209,7 +220,7 @@ export default function UploadPage() {
           </button>
         </div>
 
-        {/* Vision AI Widget (Responsive Height) */}
+        {/* Vision AI Widget */}
         {pageState.showVision && (
           <div className="fixed bottom-20 right-6 w-96 h-[80vh] max-h-[500px] bg-white rounded-xl shadow-2xl border border-gray-200 z-50 overflow-hidden">
             <Vision 
@@ -221,6 +232,18 @@ export default function UploadPage() {
               analysisContext={pageState.visionContext}
               onContextUpdate={handleContextUpdate}
             />
+          </div>
+        )}
+
+        {/* ✅ LiveVision Modal */}
+        {pageState.isLiveMode && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+            <div className="bg-white w-full max-w-lg h-[90vh] rounded-xl overflow-hidden shadow-2xl border border-gray-200 relative">
+              <LiveVision
+                language={pageState.language}
+                onClose={() => setPageState(prev => ({ ...prev, isLiveMode: false }))}
+              />
+            </div>
           </div>
         )}
       </div>
