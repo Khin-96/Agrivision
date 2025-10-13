@@ -2,6 +2,14 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import { io, Socket } from "socket.io-client";
+import {
+  Video,
+  VideoOff,
+  Volume2,
+  VolumeX,
+  X,
+  MessageCircle,
+} from "lucide-react";
 
 interface LiveVisionProps {
   language?: "english" | "kiswahili";
@@ -12,193 +20,142 @@ export default function LiveVision({ language = "english", onClose }: LiveVision
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const socketRef = useRef<Socket | null>(null);
-  const frameIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  const audioContextRef = useRef<AudioContext | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const isCleaningUpRef = useRef(false);
-  const connectionAttemptRef = useRef(0);
-  
-  const [isActive, setIsActive] = useState(false);
-  const [aiOutput, setAiOutput] = useState<string>("Initializing...");
-  const [isInitialized, setIsInitialized] = useState(false);
+  const chatEndRef = useRef<HTMLDivElement>(null);
+  const hasGreetedRef = useRef(false);
+
+  const [messages, setMessages] = useState<
+    Array<{ id: string; role: "user" | "ai"; text: string; timestamp: number }>
+  >([]);
+  const [currentAiResponse, setCurrentAiResponse] = useState("");
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
-  const [streamingText, setStreamingText] = useState<string>("");
+  const [isMuted, setIsMuted] = useState(false);
+  const [isVideoEnabled, setIsVideoEnabled] = useState(true);
+  const [connectionStatus, setConnectionStatus] = useState("Initializing...");
+  const [isAiThinking, setIsAiThinking] = useState(false);
 
-  // 🔌 Initialize Socket.IO connection
+  // Generate unique IDs for messages
+  const generateId = () => `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+  // Auto-scroll chat
   useEffect(() => {
-    // Prevent double initialization in React Strict Mode
-    if (socketRef.current) return;
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, currentAiResponse]);
 
-    const timer = setTimeout(() => {
-      initSocket();
-    }, 100); // Small delay to avoid strict mode issues
-
-    return () => {
-      clearTimeout(timer);
-      cleanup();
-    };
+  useEffect(() => {
+    if (!socketRef.current) initSocket();
+    return () => cleanup();
   }, []);
 
+  // Initialize Socket.IO
   const initSocket = () => {
-    // Don't create socket if already exists or cleaning up
-    if (socketRef.current || isCleaningUpRef.current) {
-      console.log("Socket already exists or cleaning up, skipping...");
-      return;
-    }
+    if (socketRef.current || isCleaningUpRef.current) return;
 
-    connectionAttemptRef.current += 1;
-    console.log(`🔌 Initializing socket connection (attempt ${connectionAttemptRef.current})...`);
-
-    // Connect to Socket.IO server
+    setConnectionStatus("Connecting...");
     const socket = io({
       path: "/socket.io/",
-      transports: ["polling", "websocket"], // Start with polling first
+      transports: ["websocket", "polling"],
       reconnection: true,
       reconnectionAttempts: 5,
       reconnectionDelay: 1000,
-      reconnectionDelayMax: 5000,
-      timeout: 20000,
-      autoConnect: true,
-      forceNew: true,
+      timeout: 10000,
     });
-
     socketRef.current = socket;
 
-    // Connection events
     socket.on("connect", () => {
-      console.log("✅ Socket connected:", socket.id);
       setIsConnected(true);
-      setAiOutput("🔗 Connected to AI server. Initializing camera...");
-      
-      // Initialize media after connection
-      if (!mediaStreamRef.current) {
-        initMedia();
-      }
+      setConnectionStatus("Connected");
+      initMedia();
     });
 
-    socket.on("disconnect", (reason) => {
-      console.log("❌ Socket disconnected:", reason);
+    socket.on("disconnect", () => {
       setIsConnected(false);
-      
-      if (!isCleaningUpRef.current) {
-        setAiOutput((prev) => prev + `\n\n⚠️ Disconnected: ${reason}`);
-      }
+      setConnectionStatus("Disconnected");
     });
 
-    socket.on("connect_error", (error) => {
-      console.error("Connection error:", error.message);
-      
-      if (connectionAttemptRef.current <= 3) {
-        setAiOutput(`❌ Connection attempt ${connectionAttemptRef.current} failed. Retrying...`);
-      } else {
-        setAiOutput("❌ Failed to connect to server. Please ensure the server is running.");
-      }
-    });
-
-    socket.on("reconnect_attempt", (attempt) => {
-      console.log(`🔄 Reconnection attempt ${attempt}...`);
-      setAiOutput((prev) => prev + `\n\n🔄 Reconnecting (${attempt})...`);
-    });
-
-    socket.on("reconnect", (attempt) => {
-      console.log(`✅ Reconnected after ${attempt} attempts`);
-      setAiOutput((prev) => prev + "\n\n✅ Reconnected!");
-    });
-
-    // AI response events
-    socket.on("connected", (data) => {
-      console.log("Server confirmed:", data);
-      setAiOutput("✅ " + data.message);
-    });
+    socket.on("connect_error", () => setConnectionStatus("Connection failed"));
 
     socket.on("response_chunk", (data) => {
-      setStreamingText((prev) => prev + data.text);
+      setCurrentAiResponse((prev) => prev + data.text);
+      setIsAiThinking(true);
     });
 
     socket.on("response_complete", async (data) => {
       const fullText = data.fullText;
-      setAiOutput((prev) => prev + `\n\n🤖 AI: ${fullText}`);
-      setStreamingText("");
-      
-      if (isActive) {
-        await speakText(fullText);
-      }
+      setMessages((prev) => [
+        ...prev,
+        { id: generateId(), role: "ai", text: fullText, timestamp: Date.now() },
+      ]);
+      setCurrentAiResponse("");
+      setIsAiThinking(false);
+      if (!isMuted) await speakText(fullText);
     });
 
-    socket.on("processing_started", () => {
-      setStreamingText("");
-      setAiOutput((prev) => prev + "\n\n🔄 AI analyzing...");
-    });
-
-    socket.on("processing_completed", () => {
-      console.log("✅ Processing completed");
-    });
-
-    socket.on("frame_received", (data) => {
-      console.log("📸 Frame buffered:", data.bufferSize);
-    });
-
-    socket.on("audio_received", (data) => {
-      console.log("🎤 Audio buffered:", data.bufferSize);
-    });
-
-    socket.on("error", (data) => {
-      console.error("Server error:", data);
-      setAiOutput((prev) => prev + `\n\n❌ Error: ${data.error}`);
-    });
+    socket.on("processing_started", () => setIsAiThinking(true));
+    socket.on("processing_completed", () => setIsAiThinking(false));
   };
 
-  // 🎥 Initialize webcam + mic
+  // Initialize camera and microphone
   const initMedia = async () => {
-    if (mediaStreamRef.current) {
-      console.log("Media already initialized");
-      return;
-    }
+    if (mediaStreamRef.current) return;
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { width: 640, height: 480, facingMode: "user" },
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          sampleRate: 16000,
-        },
+        video: { width: 1280, height: 720, facingMode: "user", frameRate: 30 },
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
       });
-      
       mediaStreamRef.current = stream;
-      
+
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
+        await videoRef.current.play().catch(() => console.warn("Autoplay blocked"));
       }
 
       setupAudioRecording(stream);
-      
-      setIsInitialized(true);
-      setAiOutput((prev) => prev + "\n\n🎙️ Ready! Press 'Start' to begin conversation.");
-    } catch (error) {
-      console.error("Camera/Mic access error:", error);
-      setAiOutput("❌ Unable to access camera/microphone. Please grant permissions and refresh.");
+      if (!hasGreetedRef.current) sendGreeting();
+    } catch (err: any) {
+      console.error("getUserMedia failed:", err);
+      if (err.name === "NotAllowedError" || err.name === "PermissionDeniedError") {
+        setConnectionStatus("Camera/microphone access denied");
+        addSystemMessage("Unable to access camera/microphone. Please grant permissions.");
+      } else {
+        setConnectionStatus("Media initialization error");
+        addSystemMessage(`Error initializing media: ${err.message}`);
+      }
     }
   };
 
-  // 🎤 Setup audio recording
+  // Send greeting to AI
+  const sendGreeting = () => {
+    hasGreetedRef.current = true;
+    const greeting =
+      language === "kiswahili"
+        ? "Hujambo! Mimi ni Vision AI. Tunaweza kuzungumza sasa."
+        : "Hello! I am Vision AI. Let's start chatting!";
+    setMessages((prev) => [
+      ...prev,
+      { id: generateId(), role: "ai", text: greeting, timestamp: Date.now() },
+    ]);
+    speakText(greeting);
+
+    socketRef.current?.emit("text_prompt", {
+      prompt: `User sees greeting: "${greeting}". Respond conversationally in ${
+        language === "kiswahili" ? "Kiswahili" : "English"
+      }.`,
+    });
+  };
+
+  // Setup continuous audio streaming
   const setupAudioRecording = (stream: MediaStream) => {
     if (recorderRef.current) return;
 
     try {
-      audioContextRef.current = new AudioContext({ sampleRate: 16000 });
-      const dest = audioContextRef.current.createMediaStreamDestination();
-      const audioInput = audioContextRef.current.createMediaStreamSource(stream);
-      audioInput.connect(dest);
-
-      const recorder = new MediaRecorder(dest.stream, { 
-        mimeType: "audio/webm;codecs=opus",
-        audioBitsPerSecond: 16000,
-      });
+      const recorder = new MediaRecorder(stream, { mimeType: "audio/webm;codecs=opus" });
 
       recorder.ondataavailable = (e) => {
-        if (e.data.size > 0 && socketRef.current?.connected && isActive) {
+        if (e.data.size > 0 && socketRef.current?.connected) {
           e.data.arrayBuffer().then((buffer) => {
             const base64Audio = arrayBufferToBase64(buffer);
             socketRef.current?.emit("audio_chunk", {
@@ -210,164 +167,71 @@ export default function LiveVision({ language = "english", onClose }: LiveVision
         }
       };
 
-      recorder.start(2000);
+      recorder.start(1000); // send audio every 1 second
       recorderRef.current = recorder;
-    } catch (error) {
-      console.error("Audio recording setup error:", error);
+    } catch (err) {
+      console.warn("Audio recording failed:", err);
     }
   };
 
-  // 🔄 Start continuous streaming
-  const startStreaming = () => {
-    if (!socketRef.current?.connected || !isInitialized) {
-      setAiOutput((prev) => prev + "\n\n⚠️ Not ready. Please wait for connection...");
-      return;
-    }
-
-    setIsActive(true);
-    setAiOutput((prev) => prev + "\n\n▶️ Live streaming started!");
-
-    frameIntervalRef.current = setInterval(() => {
-      if (isActive && !isSpeaking) {
-        sendVideoFrame();
-      }
-    }, 1000);
-
-    socketRef.current.emit("text_prompt", {
-      prompt: `You are having a live video conversation with a farmer in ${language === "kiswahili" ? "Kiswahili" : "English"}. 
-Analyze the video feed and audio in real-time. Respond naturally and conversationally.
-Keep responses brief (2-3 sentences) for natural conversation flow.
-Focus on farming activities, crop conditions, and answer any questions the farmer asks.`,
-    });
+  const toggleMute = () => {
+    setIsMuted(!isMuted);
+    if (isMuted) speechSynthesis.cancel();
   };
 
-  // 📤 Send video frame
-  const sendVideoFrame = () => {
-    const video = videoRef.current;
-    if (!video || !socketRef.current?.connected) return;
-
-    try {
-      const canvas = document.createElement("canvas");
-      canvas.width = 640;
-      canvas.height = 480;
-      const ctx = canvas.getContext("2d");
-      
-      if (!ctx) return;
-      
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-      const frameData = canvas.toDataURL("image/jpeg", 0.6).split(",")[1];
-
-      socketRef.current.emit("video_frame", {
-        frame: frameData,
-        mimeType: "image/jpeg",
-        timestamp: Date.now(),
-      });
-    } catch (error) {
-      console.error("Send frame error:", error);
+  const toggleVideo = () => {
+    if (mediaStreamRef.current) {
+      const track = mediaStreamRef.current.getVideoTracks()[0];
+      if (track) track.enabled = !isVideoEnabled;
+      setIsVideoEnabled(!isVideoEnabled);
     }
   };
 
-  // 🟡 Toggle streaming
-  const toggleStreaming = () => {
-    if (isActive) {
-      setIsActive(false);
-      setAiOutput((prev) => prev + "\n\n⏸️ Streaming paused");
-      
-      if (frameIntervalRef.current) {
-        clearInterval(frameIntervalRef.current);
-        frameIntervalRef.current = null;
-      }
-      
-      if (typeof window !== "undefined" && "speechSynthesis" in window) {
-        speechSynthesis.cancel();
-      }
-      setIsSpeaking(false);
-      
-      socketRef.current?.emit("clear_buffers");
-    } else {
-      startStreaming();
-    }
-  };
-
-  // 🔊 Text-to-Speech
-  const speakText = async (text: string): Promise<void> => {
-    return new Promise((resolve) => {
-      if (typeof window === "undefined" || !("speechSynthesis" in window)) {
-        resolve();
-        return;
-      }
-
+  const speakText = async (text: string) =>
+    new Promise<void>((resolve) => {
+      if (!("speechSynthesis" in window) || isMuted) return resolve();
       setIsSpeaking(true);
-
       const utterance = new SpeechSynthesisUtterance(text);
       utterance.lang = language === "kiswahili" ? "sw-KE" : "en-US";
-      utterance.rate = 0.95;
-      utterance.pitch = 1.0;
-      utterance.volume = 1.0;
-
       const voices = speechSynthesis.getVoices();
-      const preferredVoice = voices.find(voice => 
-        language === "kiswahili" 
-          ? voice.lang.startsWith("sw")
-          : voice.lang.startsWith("en")
+      const preferredVoice = voices.find((v) =>
+        language === "kiswahili" ? v.lang.startsWith("sw") : v.lang.startsWith("en")
       );
-      
-      if (preferredVoice) {
-        utterance.voice = preferredVoice;
-      }
-
+      if (preferredVoice) utterance.voice = preferredVoice;
       utterance.onend = () => {
         setIsSpeaking(false);
         resolve();
       };
-
       utterance.onerror = () => {
         setIsSpeaking(false);
         resolve();
       };
-
       speechSynthesis.cancel();
       speechSynthesis.speak(utterance);
     });
+
+  const addSystemMessage = (text: string) => {
+    setMessages((prev) => [
+      ...prev,
+      { id: generateId(), role: "user", text: `ℹ️ ${text}`, timestamp: Date.now() },
+    ]);
   };
 
-  // 🧹 Cleanup
   const cleanup = () => {
     if (isCleaningUpRef.current) return;
-    
     isCleaningUpRef.current = true;
-    console.log("🧹 Cleaning up resources...");
 
-    if (frameIntervalRef.current) {
-      clearInterval(frameIntervalRef.current);
-      frameIntervalRef.current = null;
-    }
-
-    if (typeof window !== "undefined" && "speechSynthesis" in window) {
-      speechSynthesis.cancel();
-    }
-
-    if (recorderRef.current?.state !== "inactive") {
-      try {
-        recorderRef.current?.stop();
-      } catch (e) {
-        console.warn("Recorder stop error:", e);
+    try {
+      if (recorderRef.current && recorderRef.current.state === "recording") {
+        recorderRef.current.stop();
       }
+    } catch (err) {
+      console.warn("Recorder stop failed:", err);
     }
 
-    if (audioContextRef.current?.state !== "closed") {
-      audioContextRef.current?.close().catch(() => {});
-    }
-
-    if (mediaStreamRef.current) {
-      mediaStreamRef.current.getTracks().forEach((track) => track.stop());
-      mediaStreamRef.current = null;
-    }
-
-    if (socketRef.current) {
-      socketRef.current.disconnect();
-      socketRef.current = null;
-    }
+    speechSynthesis.cancel();
+    mediaStreamRef.current?.getTracks().forEach((t) => t.stop());
+    socketRef.current?.disconnect();
   };
 
   const handleClose = () => {
@@ -375,83 +239,92 @@ Focus on farming activities, crop conditions, and answer any questions the farme
     onClose();
   };
 
-  const arrayBufferToBase64 = (buffer: ArrayBuffer): string => {
-    const bytes = new Uint8Array(buffer);
-    let binary = '';
-    for (let i = 0; i < bytes.byteLength; i++) {
-      binary += String.fromCharCode(bytes[i]);
-    }
-    return btoa(binary);
-  };
+  const arrayBufferToBase64 = (buffer: ArrayBuffer) =>
+    btoa(String.fromCharCode(...new Uint8Array(buffer)));
 
   return (
-    <div className="flex flex-col h-full bg-black text-white relative">
-      <div className={`absolute top-4 left-4 z-10 px-3 py-1 rounded-full text-sm font-semibold flex items-center gap-2 ${
-        isConnected ? "bg-green-600" : "bg-red-600"
-      }`}>
-        <span className={`w-2 h-2 rounded-full ${isConnected ? "bg-white animate-pulse" : "bg-gray-300"}`}></span>
-        {isConnected ? "Connected" : "Connecting..."}
-      </div>
+    <div className="fixed inset-0 w-screen h-screen bg-black text-black overflow-hidden">
+      {/* Video */}
+      <video
+        ref={videoRef}
+        autoPlay
+        playsInline
+        muted
+        className="w-full h-full object-cover"
+      />
+      {!isVideoEnabled && (
+        <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-60">
+          <VideoOff className="w-24 h-24 text-gray-400" />
+        </div>
+      )}
 
-      <div className="relative w-full h-2/3 bg-gray-900">
-        <video
-          ref={videoRef}
-          autoPlay
-          playsInline
-          muted
-          className="w-full h-full object-cover rounded-t-xl"
+      {/* Top Status */}
+      <div className="absolute top-4 left-1/2 transform -translate-x-1/2 px-4 py-2 rounded-3xl bg-white bg-opacity-10 backdrop-blur-xl border border-black border-opacity-20 shadow-lg flex items-center gap-3 text-black font-medium">
+        <div
+          className={`w-3 h-3 rounded-full ${
+            isConnected ? "bg-emerald-400" : "bg-red-400"
+          } animate-pulse`}
         />
-        
-        {isSpeaking && (
-          <div className="absolute top-4 right-4 bg-green-500 text-white px-4 py-2 rounded-full flex items-center gap-2 animate-pulse">
-            <span className="w-3 h-3 bg-white rounded-full animate-ping"></span>
-            <span className="font-semibold">AI Speaking...</span>
-          </div>
-        )}
-
-        {isActive && !isSpeaking && (
-          <div className="absolute bottom-4 right-4 bg-blue-500 text-white px-4 py-2 rounded-full flex items-center gap-2">
-            <span className="w-3 h-3 bg-white rounded-full animate-pulse"></span>
-            <span className="font-semibold">Streaming...</span>
-          </div>
-        )}
-
-        {!isInitialized && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-75">
-            <div className="text-center">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
-              <p>Initializing...</p>
-            </div>
-          </div>
-        )}
-      </div>
-
-      <div className="flex-1 p-4 overflow-y-auto bg-gray-900 text-sm font-mono whitespace-pre-wrap">
-        {aiOutput}
-        {streamingText && (
-          <div className="mt-2 text-green-400">
-            <span className="animate-pulse">▶</span> {streamingText}
-          </div>
-        )}
-      </div>
-
-      <div className="absolute bottom-4 left-0 right-0 flex justify-center gap-4 px-4">
-        <button
-          onClick={toggleStreaming}
-          disabled={!isInitialized || !isConnected}
-          className={`px-6 py-3 rounded-full font-semibold transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed ${
-            isActive
-              ? "bg-yellow-500 hover:bg-yellow-600 text-black"
-              : "bg-green-600 hover:bg-green-700 text-white"
-          }`}
-        >
-          {isActive ? "⏸️ Pause" : "▶️ Start"}
-        </button>
+        {connectionStatus}
         <button
           onClick={handleClose}
-          className="bg-red-600 hover:bg-red-700 px-6 py-3 rounded-full font-semibold text-white shadow-lg transition-all hover:scale-105"
+          className="ml-2 p-1 hover:bg-black hover:bg-opacity-20 rounded-full transition"
         >
-          🔴 Close
+          <X className="w-4 h-4" />
+        </button>
+      </div>
+
+      {/* Chat Bubbles */}
+      <div className="absolute bottom-6 right-6 w-96 max-h-96 overflow-hidden">
+        <div className="rounded-2xl bg-white bg-opacity-10 backdrop-blur-xl border border-black border-opacity-20 shadow-lg flex flex-col">
+          <div className="px-4 py-2 border-b border-black border-opacity-20 flex items-center gap-2 text-black font-medium">
+            <MessageCircle className="w-5 h-5" /> Conversation
+          </div>
+          <div className="p-3 space-y-2 overflow-y-auto max-h-80 scrollbar-thin scrollbar-thumb-black scrollbar-thumb-opacity-20">
+            {messages.map((msg) => (
+              <div
+                key={msg.id}
+                className={`flex ${
+                  msg.role === "ai" ? "justify-start" : "justify-end"
+                }`}
+              >
+                <div
+                  className={`max-w-[80%] px-3 py-2 rounded-2xl backdrop-blur-md border border-black border-opacity-20 transition-all ${
+                    msg.role === "ai"
+                      ? "bg-white bg-opacity-20"
+                      : "bg-black bg-opacity-40 text-white"
+                  }`}
+                >
+                  {msg.text}
+                </div>
+              </div>
+            ))}
+            {currentAiResponse && (
+              <div className="flex justify-start">
+                <div className="max-w-[80%] px-3 py-2 rounded-2xl bg-white bg-opacity-20 backdrop-blur-md border border-black border-opacity-20 shadow-[0_0_10px_2px_rgba(16,185,129,0.5)] transition-all">
+                  {currentAiResponse}
+                  <span className="inline-block w-2 h-4 bg-black ml-1 animate-pulse"></span>
+                </div>
+              </div>
+            )}
+            <div ref={chatEndRef} />
+          </div>
+        </div>
+      </div>
+
+      {/* Controls */}
+      <div className="absolute bottom-6 left-1/2 transform -translate-x-1/2 flex gap-2 px-3 py-2 rounded-3xl bg-white bg-opacity-10 backdrop-blur-xl border border-black border-opacity-20 shadow-md">
+        <button
+          onClick={toggleVideo}
+          className="p-2 rounded-full hover:bg-black hover:bg-opacity-20 transition"
+        >
+          {isVideoEnabled ? <Video className="w-5 h-5" /> : <VideoOff className="w-5 h-5" />}
+        </button>
+        <button
+          onClick={toggleMute}
+          className="p-2 rounded-full hover:bg-black hover:bg-opacity-20 transition"
+        >
+          {isMuted ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
         </button>
       </div>
     </div>
