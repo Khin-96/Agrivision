@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import { Toaster } from 'react-hot-toast'; 
 import FileUpload from './components/FileUpload';
 import Vision from './components/Vision';
-import LiveVision from './components/live'; // ✅ Added import
+import LiveVision from './components/live'; // ✅ Fixed import
 import { AnalysisResponse } from '@/lib/api';
 import Layout from '@/components/layout/Layout';
 import Image from 'next/image';
@@ -13,8 +13,8 @@ interface PageState {
   currentAnalysis: AnalysisResponse | null;
   visionContext: string;
   showVision: boolean;
-  language: 'english' | 'swahili';
-  isLiveMode?: boolean; // ✅ Added optional field
+  language: 'english' | 'kiswahili'; // ✅ Changed from 'swahili' to 'kiswahili'
+  isLiveMode?: boolean;
 }
 
 export default function UploadPage() {
@@ -23,7 +23,7 @@ export default function UploadPage() {
     visionContext: '',
     showVision: false,
     language: 'english',
-    isLiveMode: false // ✅ Added default
+    isLiveMode: false
   });
 
   const handleAnalysisComplete = (result: AnalysisResponse) => {
@@ -37,7 +37,7 @@ export default function UploadPage() {
     setPageState(prev => ({
       ...prev,
       currentAnalysis: result,
-      showVision: true // Show Vision widget after analysis
+      showVision: true
     }));
   };
 
@@ -55,7 +55,7 @@ export default function UploadPage() {
 
   const toggleLanguage = () => {
     setPageState(prev => {
-      const newLanguage = prev.language === 'english' ? 'swahili' : 'english';
+      const newLanguage = prev.language === 'english' ? 'kiswahili' : 'english';
       console.log('Language toggled to:', newLanguage);
       return {
         ...prev,
@@ -92,12 +92,12 @@ export default function UploadPage() {
         <div className="container mx-auto px-4 py-8">
           <div className="text-center mb-8">
             <h1 className="text-4xl font-bold text-green-800 mb-4">
-              {pageState.language === 'swahili' 
+              {pageState.language === 'kiswahili' 
                 ? 'Upakiaji na Uchambuzi wa Mazao' 
                 : 'Farm Content Upload & Analysis'}
             </h1>
             <p className="text-lg text-green-600 max-w-2xl mx-auto">
-              {pageState.language === 'swahili'
+              {pageState.language === 'kiswahili'
                 ? 'Pakia picha au video za mazao yako kupata uchambuzi wa kina na ushauri wa kitaalamu kutoka kwa Vision AI'
                 : 'Upload your farm images or videos for detailed AI analysis and expert advice from Vision AI'}
             </p>
@@ -112,7 +112,6 @@ export default function UploadPage() {
               {pageState.language === 'english' ? 'Switch to Kiswahili' : 'Switch to English'}
             </button>
 
-            {/* ✅ New "Go Live" Button */}
             <button
               onClick={() => setPageState(prev => ({ ...prev, isLiveMode: true }))}
               className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2 rounded-full font-medium transition-colors"
@@ -132,14 +131,14 @@ export default function UploadPage() {
             {pageState.currentAnalysis?.success && (
               <div className="mt-8 bg-white rounded-xl shadow-lg p-6 border border-gray-200">
                 <h3 className="text-lg font-semibold text-green-800 mb-4">
-                  {pageState.language === 'swahili' ? 'Muhtasari wa Uchambuzi' : 'Analysis Summary'}
+                  {pageState.language === 'kiswahili' ? 'Muhtasari wa Uchambuzi' : 'Analysis Summary'}
                 </h3>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
                   {pageState.currentAnalysis.categories && (
                     <div className="bg-blue-50 p-4 rounded-lg border border-blue-100">
                       <h4 className="font-medium text-blue-800 mb-2">
-                        {pageState.language === 'swahili' ? 'Aina' : 'Categories'}
+                        {pageState.language === 'kiswahili' ? 'Aina' : 'Categories'}
                       </h4>
                       <p className="text-sm text-blue-600">
                         {pageState.currentAnalysis.categories.join(', ')}
@@ -150,11 +149,11 @@ export default function UploadPage() {
                   {pageState.currentAnalysis.suggestions && (
                     <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-100">
                       <h4 className="font-medium text-yellow-800 mb-2">
-                        {pageState.language === 'swahili' ? 'Mapendekezo' : 'Recommendations'}
+                        {pageState.language === 'kiswahili' ? 'Mapendekezo' : 'Recommendations'}
                       </h4>
                       <p className="text-sm text-yellow-600">
                         {pageState.currentAnalysis.suggestions.length} {
-                          pageState.language === 'swahili' ? 'yamepatikana' : 'found'
+                          pageState.language === 'kiswahili' ? 'yamepatikana' : 'found'
                         }
                       </p>
                     </div>
@@ -163,11 +162,11 @@ export default function UploadPage() {
                   {pageState.currentAnalysis.risks && (
                     <div className="bg-red-50 p-4 rounded-lg border border-red-100">
                       <h4 className="font-medium text-red-800 mb-2">
-                        {pageState.language === 'swahili' ? 'Hatari' : 'Risks'}
+                        {pageState.language === 'kiswahili' ? 'Hatari' : 'Risks'}
                       </h4>
                       <p className="text-sm text-red-600">
                         {pageState.currentAnalysis.risks.length} {
-                          pageState.language === 'swahili' ? 'zimegunduliwa' : 'identified'
+                          pageState.language === 'kiswahili' ? 'zimegunduliwa' : 'identified'
                         }
                       </p>
                     </div>
@@ -176,11 +175,11 @@ export default function UploadPage() {
                   {pageState.currentAnalysis.didYouKnow && (
                     <div className="bg-purple-50 p-4 rounded-lg border border-purple-100">
                       <h4 className="font-medium text-purple-800 mb-2">
-                        {pageState.language === 'swahili' ? 'Mambo ya Kujua' : 'Did You Know'}
+                        {pageState.language === 'kiswahili' ? 'Mambo ya Kujua' : 'Did You Know'}
                       </h4>
                       <p className="text-sm text-purple-600">
                         {pageState.currentAnalysis.didYouKnow.length} {
-                          pageState.language === 'swahili' ? 'ukweli' : 'facts'
+                          pageState.language === 'kiswahili' ? 'ukweli' : 'facts'
                         }
                       </p>
                     </div>
@@ -190,13 +189,13 @@ export default function UploadPage() {
                 {pageState.currentAnalysis.analysis && (
                   <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
                     <h4 className="font-medium text-gray-800 mb-2">
-                      {pageState.language === 'swahili' ? 'Uchambuzi Mkuu' : 'Main Analysis'}
+                      {pageState.language === 'kiswahili' ? 'Uchambuzi Mkuu' : 'Main Analysis'}
                     </h4>
                     <p className="text-sm text-gray-600 line-clamp-3">
                       {pageState.currentAnalysis.analysis.substring(0, 200)}...
                     </p>
                     <p className="text-xs text-green-600 mt-2 font-medium">
-                      💬 {pageState.language === 'swahili' 
+                      💬 {pageState.language === 'kiswahili' 
                         ? 'Uliza Vision maswali zaidi kuhusu uchambuzi huu!'
                         : 'Ask Vision more questions about this analysis!'}
                     </p>
@@ -240,7 +239,7 @@ export default function UploadPage() {
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
             <div className="bg-white w-full max-w-lg h-[90vh] rounded-xl overflow-hidden shadow-2xl border border-gray-200 relative">
               <LiveVision
-                language={pageState.language}
+                language={pageState.language === 'swahili' ? 'kiswahili' : pageState.language} // ✅ Normalized
                 onClose={() => setPageState(prev => ({ ...prev, isLiveMode: false }))}
               />
             </div>
