@@ -94,7 +94,7 @@ async function initiateSTKPush(phone: string, amount: number) {
       PartyB: MPESA_CONFIG.SHORTCODE,
       PhoneNumber: phone,
       CallBackURL: MPESA_CONFIG.CALLBACK_URL,
-      AccountReference: 'MkulimaHub',
+      AccountReference: 'Agrivision',
       TransactionDesc: 'Cart Payment'
     };
 
