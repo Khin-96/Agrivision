@@ -1,122 +1,215 @@
-// /app/api/mpesa/stkpush/route.ts
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from 'next/server';
 
-const SANDBOX_BASE = "https://sandbox.safaricom.co.ke";
-const CONSUMER_KEY = process.env.MPESA_CONSUMER_KEY || "";
-const CONSUMER_SECRET = process.env.MPESA_CONSUMER_SECRET || "";
-const SHORTCODE = process.env.MPESA_SHORTCODE || "174379";
-const PASSKEY = process.env.MPESA_PASSKEY || "";
-const CALLBACK_URL = process.env.MPESA_CALLBACK_URL || "";
+// M-Pesa configuration - USING HARDCODED VALUES TO ENSURE CORRECTNESS
+const MPESA_CONFIG = {
+  AUTH_URL: 'https://sandbox.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials',
+  STK_PUSH_URL: 'https://sandbox.safaricom.co.ke/mpesa/stkpush/v1/processrequest',
+  SHORTCODE: '174379',
+  CONSUMER_KEY: 'RAENbwj0rkQ5LG1dlVzdpQyeAOSY0d3oK4M7beqJ4wfNC99K',
+  CONSUMER_SECRET: 'MJH2D6WXMDVxdApTgJeIKMVZu7hV28EX0KmsexlARAwVdetwYAgnCzsCjWiTxiM9',
+  PASSKEY: 'bfb279f9aa9bdbcf158e97dd71a467cd2e0c893059b10f78e6b72ada1ed2c919',
+  CALLBACK_URL: 'https://khin-mpesa.loca.lt/api/mpesa/callback'
+};
 
-function timestampYYYYMMDDHHMMSS() {
+// Get current timestamp in required format
+function getTimestamp() {
   const now = new Date();
-  const pad = (n: number) => n.toString().padStart(2, "0");
-  return (
-    now.getFullYear().toString() +
-    pad(now.getMonth() + 1) +
-    pad(now.getDate()) +
-    pad(now.getHours()) +
-    pad(now.getMinutes()) +
-    pad(now.getSeconds())
-  );
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  const hours = String(now.getHours()).padStart(2, '0');
+  const minutes = String(now.getMinutes()).padStart(2, '0');
+  const seconds = String(now.getSeconds()).padStart(2, '0');
+  
+  return `${year}${month}${day}${hours}${minutes}${seconds}`;
 }
 
-async function fetchJson(url: string, opts: RequestInit = {}) {
-  // wrapper to capture network errors and body text
+// Generate Lipa Na M-Pesa password (EXACTLY like the simulator)
+function generatePassword() {
+  const timestamp = getTimestamp();
+  const data = MPESA_CONFIG.SHORTCODE + MPESA_CONFIG.PASSKEY + timestamp;
+  const password = Buffer.from(data).toString('base64');
+  
+  console.log('🔐 Password Generation Debug:', {
+    shortcode: MPESA_CONFIG.SHORTCODE,
+    passkey: MPESA_CONFIG.PASSKEY,
+    timestamp: timestamp,
+    dataString: data,
+    password: password,
+    passwordLength: password.length
+  });
+  
+  return {
+    password: password,
+    timestamp: timestamp
+  };
+}
+
+// Get access token
+async function getAccessToken() {
   try {
-    const res = await fetch(url, opts);
-    const text = await res.text();
-    let body: any;
-    try {
-      body = JSON.parse(text);
-    } catch {
-      body = text;
+    const credentials = Buffer.from(`${MPESA_CONFIG.CONSUMER_KEY}:${MPESA_CONFIG.CONSUMER_SECRET}`).toString('base64');
+    
+    console.log('🔐 Auth Debug:', {
+      consumerKey: MPESA_CONFIG.CONSUMER_KEY,
+      consumerSecret: '***' + MPESA_CONFIG.CONSUMER_SECRET.slice(-4),
+      authHeader: 'Basic ' + credentials.slice(0, 20) + '...'
+    });
+
+    const response = await fetch(MPESA_CONFIG.AUTH_URL, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Basic ${credentials}`,
+      },
+      cache: 'no-store'
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Auth failed: ${response.status} - ${errorText}`);
     }
-    return { ok: res.ok, status: res.status, headers: Object.fromEntries(res.headers), body };
-  } catch (err: any) {
-    return { ok: false, networkError: true, message: err.message || String(err) };
+
+    const data = await response.json();
+    console.log('✅ Access token received');
+    return data.access_token;
+  } catch (error) {
+    console.error('🔴 Access token error:', error);
+    throw error;
   }
 }
 
-export async function POST(req: NextRequest) {
+// Initiate STK Push
+async function initiateSTKPush(phone: string, amount: number) {
   try {
-    const json = await req.json().catch(() => ({}));
-    const phone = (json.phone || json.partyA || json.partyAString) as string;
-    const amount = json.amount ?? json.Amount ?? 1;
+    const accessToken = await getAccessToken();
+    const { password, timestamp } = generatePassword();
 
-    if (!phone) {
+    const payload = {
+      BusinessShortCode: MPESA_CONFIG.SHORTCODE,
+      Password: password,
+      Timestamp: timestamp,
+      TransactionType: 'CustomerPayBillOnline',
+      Amount: Math.round(amount),
+      PartyA: phone,
+      PartyB: MPESA_CONFIG.SHORTCODE,
+      PhoneNumber: phone,
+      CallBackURL: MPESA_CONFIG.CALLBACK_URL,
+      AccountReference: 'MkulimaHub',
+      TransactionDesc: 'Cart Payment'
+    };
+
+    console.log('📤 STK Push Request:', {
+      url: MPESA_CONFIG.STK_PUSH_URL,
+      payload: {
+        ...payload,
+        Password: password.slice(0, 20) + '...' // Partial for verification
+      }
+    });
+
+    const response = await fetch(MPESA_CONFIG.STK_PUSH_URL, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload),
+      cache: 'no-store'
+    });
+
+    const responseText = await response.text();
+    console.log('📥 STK Push Response:', {
+      status: response.status,
+      statusText: response.statusText,
+      body: responseText
+    });
+
+    let data;
+    try {
+      data = JSON.parse(responseText);
+    } catch (e) {
+      throw new Error(`Invalid JSON response: ${responseText}`);
+    }
+
+    if (!response.ok) {
+      throw new Error(data.errorMessage || `HTTP ${response.status}: ${response.statusText}`);
+    }
+
+    return data;
+  } catch (error) {
+    console.error('🔴 STK Push Error:', error);
+    throw error;
+  }
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const { phone, amount } = await request.json();
+
+    console.log('🟡 Received payment request:', { phone, amount });
+
+    // Validate input
+    if (!phone || !amount) {
       return NextResponse.json(
-        { error: "phone is required in request body (e.g. { \"phone\": \"2547XXXXXXXX\", \"amount\": 1 })" },
+        { error: 'Phone and amount are required', success: false },
         { status: 400 }
       );
     }
 
-    // check env
-    if (!CONSUMER_KEY || !CONSUMER_SECRET) {
-      return NextResponse.json({ error: "Missing MPESA_CONSUMER_KEY or MPESA_CONSUMER_SECRET in .env.local" }, { status: 500 });
-    }
-    if (!PASSKEY) {
-      return NextResponse.json({ error: "Missing MPESA_PASSKEY in .env.local" }, { status: 500 });
-    }
-    if (!CALLBACK_URL) {
-      return NextResponse.json({ error: "Missing MPESA_CALLBACK_URL in .env.local (must be public HTTPS URL)" }, { status: 500 });
+    // Format phone number
+    let formattedPhone = phone.replace(/\D/g, '');
+    if (formattedPhone.startsWith('0') && formattedPhone.length === 10) {
+      formattedPhone = `254${formattedPhone.substring(1)}`;
     }
 
-    // 1) Access token
-    const tokenUrl = `${SANDBOX_BASE}/oauth/v1/generate?grant_type=client_credentials`;
-    const basic = Buffer.from(`${CONSUMER_KEY}:${CONSUMER_SECRET}`).toString("base64");
-    const tokenResp = await fetchJson(tokenUrl, { headers: { Authorization: `Basic ${basic}` } });
-
-    if (!tokenResp.ok) {
+    // Validate phone format
+    if (!/^2547\d{8}$/.test(formattedPhone)) {
       return NextResponse.json(
-        { error: "Failed to get access token", tokenResp },
-        { status: tokenResp.status || 500 }
+        { error: 'Invalid phone number format. Use 2547XXXXXXXX or 07XXXXXXXX', success: false },
+        { status: 400 }
       );
     }
-    const accessToken = tokenResp.body?.access_token as string | undefined;
-    if (!accessToken) {
-      return NextResponse.json({ error: "No access_token in token response", tokenResp }, { status: 500 });
+
+    // Validate amount
+    if (amount < 1 || amount > 150000) {
+      return NextResponse.json(
+        { error: 'Amount must be between 1 and 150,000 KES', success: false },
+        { status: 400 }
+      );
     }
 
-    // 2) Build STK push payload
-    const timestamp = timestampYYYYMMDDHHMMSS();
-    const password = Buffer.from(`${SHORTCODE}${PASSKEY}${timestamp}`).toString("base64");
-    const payload = {
-      BusinessShortCode: SHORTCODE,
-      Password: password,
-      Timestamp: timestamp,
-      TransactionType: "CustomerPayBillOnline",
-      Amount: Math.max(1, Math.floor(Number(amount) || 1)),
-      PartyA: phone,
-      PartyB: SHORTCODE,
-      PhoneNumber: phone,
-      CallBackURL: CALLBACK_URL,
-      AccountReference: json.accountReference || "NextShop",
-      TransactionDesc: json.description || "Payment",
-    };
+    console.log('🚀 Initiating STK Push...');
+    const result = await initiateSTKPush(formattedPhone, amount);
 
-    // 3) Send STK push
-    const stkUrl = `${SANDBOX_BASE}/mpesa/stkpush/v1/processrequest`;
-    const stkResp = await fetchJson(stkUrl, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "Content-Type": "application/json",
+    console.log('✅ STK Push Result:', result);
+
+    if (result.ResponseCode === '0') {
+      return NextResponse.json({
+        success: true,
+        message: 'STK Push initiated successfully. Check your phone to complete payment.',
+        data: {
+          CheckoutRequestID: result.CheckoutRequestID,
+          CustomerMessage: result.CustomerMessage,
+          ResponseCode: result.ResponseCode,
+          ResponseDescription: result.ResponseDescription
+        }
+      });
+    } else {
+      return NextResponse.json({
+        success: false,
+        error: result.ResponseDescription || 'STK Push failed',
+        data: result
+      }, { status: 400 });
+    }
+
+  } catch (error: any) {
+    console.error('🔴 API Error:', error);
+    
+    return NextResponse.json(
+      { 
+        error: error.message || 'Internal server error',
+        success: false 
       },
-      body: JSON.stringify(payload),
-    });
-
-    // return full info (success or failure)
-    if (!stkResp.ok) {
-      return NextResponse.json({ error: "STK Push returned error", stkResp }, { status: stkResp.status || 500 });
-    }
-
-    return NextResponse.json({ message: "STK Push initiated", tokenResp, stkResp });
-  } catch (err: any) {
-    return NextResponse.json({ error: "Unhandled route error", message: err.message, stack: err.stack }, { status: 500 });
+      { status: 500 }
+    );
   }
-}
-
-export async function GET() {
-  return NextResponse.json({ message: "POST only: /api/mpesa/stkpush" });
 }
