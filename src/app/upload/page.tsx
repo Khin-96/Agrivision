@@ -80,6 +80,10 @@ export default function UploadPage() {
     return pageState.language === 'kiswahili' ? 'swahili' : 'english';
   };
 
+  const closeLiveMode = () => {
+    setPageState(prev => ({ ...prev, isLiveMode: false }));
+  };
+
   return (
     <Layout>
       <div className="min-h-screen bg-white">
@@ -242,11 +246,20 @@ export default function UploadPage() {
 
         {/* LiveVision Modal */}
         {pageState.isLiveMode && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
             <div className="bg-white w-full max-w-lg h-[90vh] rounded-xl overflow-hidden shadow-2xl border border-gray-200 relative">
-              <LiveVision
-                onClose={() => setPageState(prev => ({ ...prev, isLiveMode: false }))}
-              />
+              {/* Close button for LiveVision */}
+              <button
+                onClick={closeLiveMode}
+                className="absolute top-4 right-4 z-10 bg-red-500 hover:bg-red-600 text-white rounded-full p-2 transition-colors"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+              
+              {/* LiveVision component without any props */}
+              <LiveVision />
             </div>
           </div>
         )}
