@@ -80,11 +80,6 @@ export default function UploadPage() {
     return pageState.language === 'kiswahili' ? 'swahili' : 'english';
   };
 
-  // Helper for LiveVision component (expects 'kiswahili' not 'swahili')
-  const getLiveVisionLanguage = (): 'english' | 'kiswahili' => {
-    return pageState.language;
-  };
-
   return (
     <Layout>
       <div className="min-h-screen bg-white">
@@ -250,7 +245,6 @@ export default function UploadPage() {
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
             <div className="bg-white w-full max-w-lg h-[90vh] rounded-xl overflow-hidden shadow-2xl border border-gray-200 relative">
               <LiveVision
-                language={getLiveVisionLanguage()}
                 onClose={() => setPageState(prev => ({ ...prev, isLiveMode: false }))}
               />
             </div>
