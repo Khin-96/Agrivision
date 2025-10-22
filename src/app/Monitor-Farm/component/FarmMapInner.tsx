@@ -455,7 +455,7 @@ export default function FarmMapInner() {
             >
               <img 
                 src="/avatar.png" 
-                alt="Farm AI Assistant"
+                alt="Vision AI Assistant"
                 className="w-14 h-14 rounded-full object-cover border-2 border-white/80 shadow-lg"
               />
             </motion.button>
@@ -475,7 +475,7 @@ export default function FarmMapInner() {
         <div className="flex justify-between items-center px-4 py-3 bg-gradient-to-r from-green-600/80 to-blue-600/80 text-white">
           <div className="flex items-center gap-2">
             <Bot size={20} />
-            <span className="font-semibold">Farm AI Assistant</span>
+            <span className="font-semibold">Vision AI</span>
           </div>
           <div className="flex gap-2">
             <button
