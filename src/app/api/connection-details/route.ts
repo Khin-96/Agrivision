@@ -17,23 +17,17 @@ export const revalidate = 0;
 
 export async function POST(req: Request) {
   try {
-    if (LIVEKIT_URL === undefined) {
-      throw new Error('LIVEKIT_URL is not defined');
-    }
-    if (API_KEY === undefined) {
-      throw new Error('LIVEKIT_API_KEY is not defined');
-    }
-    if (API_SECRET === undefined) {
-      throw new Error('LIVEKIT_API_SECRET is not defined');
-    }
+    if (!LIVEKIT_URL) throw new Error('LIVEKIT_URL is not defined');
+    if (!API_KEY) throw new Error('LIVEKIT_API_KEY is not defined');
+    if (!API_SECRET) throw new Error('LIVEKIT_API_SECRET is not defined');
 
     // Use the agent name that matches your Python agent
     const agentName = "Assistant";
 
     // Generate participant token
     const participantName = 'user';
-    const participantIdentity = `voice_assistant_user_${Math.floor(Math.random() * 10_000)}`;
-    const roomName = `voice_assistant_room_${Math.floor(Math.random() * 10_000)}`;
+    const participantIdentity = `user_${Date.now()}`;
+    const roomName = `room_${Date.now()}`;
 
     const participantToken = await createParticipantToken(
       { identity: participantIdentity, name: participantName },
@@ -76,6 +70,7 @@ function createParticipantToken(
     canPublish: true,
     canPublishData: true,
     canSubscribe: true,
+    roomCreate: true, // Added this to allow room creation
   };
   at.addGrant(grant);
 
