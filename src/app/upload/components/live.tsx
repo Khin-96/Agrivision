@@ -11,7 +11,7 @@ import {
   RemoteTrack,
   RemoteTrackPublication
 } from 'livekit-client';
-import { ArrowLeft, Camera, CameraOff, Mic, MicOff, Bot } from 'lucide-react';
+import { ArrowLeft, Camera, CameraOff, Mic, MicOff, Bot, Eye } from 'lucide-react';
 
 interface LiveVisionProps {
   onClose?: () => void;
@@ -39,6 +39,7 @@ export default function LiveVision({ onClose }: LiveVisionProps) {
   const [remoteParticipants, setRemoteParticipants] = useState<RemoteParticipant[]>([]);
   const [agentConnected, setAgentConnected] = useState(false);
   const [connectionDetails, setConnectionDetails] = useState<ConnectionDetails | null>(null);
+  const [videoStreamActive, setVideoStreamActive] = useState(false);
 
   // Fetch connection details from API
   const fetchConnectionDetails = async (): Promise<ConnectionDetails> => {
@@ -70,7 +71,7 @@ export default function LiveVision({ onClose }: LiveVisionProps) {
     try {
       setError(null);
       
-      // Create video track
+      // Create video track with explicit camera facing
       const videoTrack = await createLocalVideoTrack({ 
         resolution: VideoPresets.h720,
         facingMode: 'user'
@@ -86,6 +87,8 @@ export default function LiveVision({ onClose }: LiveVisionProps) {
         videoTrack.attach(videoRef.current);
       }
 
+      console.log('✅ Camera and microphone initialized');
+
     } catch (err) {
       console.error('Error accessing camera:', err);
       setError('Failed to access camera and microphone. Please check permissions.');
@@ -98,24 +101,32 @@ export default function LiveVision({ onClose }: LiveVisionProps) {
     publication: RemoteTrackPublication,
     participant: RemoteParticipant
   ) => {
-    console.log('Track subscribed:', track.kind, track.sid, participant.identity, participant.name);
+    console.log('Track subscribed:', {
+      kind: track.kind,
+      sid: track.sid,
+      source: publication.source,
+      participant: participant.identity,
+      name: participant.name
+    });
     
     if (track.kind === Track.Kind.Audio) {
-      // This is the AI's audio track - attach it to audio element
+      // This is the AI's audio track
       if (audioRef.current) {
         track.attach(audioRef.current);
-        console.log('AI audio track attached and should be playing');
+        console.log('✅ AI audio track attached');
         
-        // Force play the audio element
+        // Force play
         audioRef.current.play().catch(e => {
-          console.log('Auto-play prevented, trying to play manually:', e);
+          console.log('Auto-play prevented, user interaction needed:', e);
         });
       }
       
-      // Check if this is an agent - updated to match Python agent identity
-      if (participant.identity.includes('agent') || participant.name?.includes('agent') || participant.identity.includes('Assistant')) {
+      // Check if this is an agent
+      if (participant.identity.includes('agent') || 
+          participant.name?.includes('agent') || 
+          participant.identity.includes('Assistant')) {
         setAgentConnected(true);
-        console.log('AI Agent connected and audio track ready');
+        console.log('🤖 AI Agent audio connected');
       }
     }
   };
@@ -133,25 +144,31 @@ export default function LiveVision({ onClose }: LiveVisionProps) {
   };
 
   const handleParticipantConnected = (participant: RemoteParticipant) => {
-    console.log('Participant connected:', participant.identity, participant.name, participant.metadata);
+    console.log('Participant connected:', {
+      identity: participant.identity,
+      name: participant.name,
+      metadata: participant.metadata
+    });
     setRemoteParticipants(prev => [...prev, participant]);
 
-    // Check if this is an agent - updated to match Python agent
-    if (participant.identity.includes('agent') || participant.name?.includes('agent') || participant.identity.includes('Assistant')) {
+    // Check if this is an agent
+    if (participant.identity.includes('agent') || 
+        participant.name?.includes('agent') || 
+        participant.identity.includes('Assistant')) {
       setAgentConnected(true);
-      console.log('AI Agent detected:', participant.identity);
+      console.log('🤖 AI Agent detected');
     }
 
-    // FIX: Safely handle tracks - they might not be immediately available
-    // Use getTrackPublications() instead of .tracks
+    // Handle existing tracks
     const trackPublications = participant.getTrackPublications();
     console.log('Available track publications:', trackPublications.map(t => ({
       trackSid: t.trackSid,
       kind: t.kind,
+      source: t.source,
       track: t.track ? 'has track' : 'no track'
     })));
 
-    // Subscribe to all audio tracks from this participant
+    // Subscribe to audio tracks
     trackPublications.forEach(publication => {
       if (publication.kind === Track.Kind.Audio && publication.track) {
         if (audioRef.current) {
@@ -163,9 +180,13 @@ export default function LiveVision({ onClose }: LiveVisionProps) {
       }
     });
 
-    // Also listen for future track publications
+    // Listen for future track publications
     participant.on('trackPublished', (publication: RemoteTrackPublication) => {
-      console.log('Track published later:', publication.trackSid, publication.kind);
+      console.log('Track published later:', {
+        trackSid: publication.trackSid,
+        kind: publication.kind,
+        source: publication.source
+      });
       if (publication.kind === Track.Kind.Audio && publication.track && audioRef.current) {
         publication.track.attach(audioRef.current);
         audioRef.current.play().catch(e => {
@@ -179,12 +200,14 @@ export default function LiveVision({ onClose }: LiveVisionProps) {
     console.log('Participant disconnected:', participant.identity);
     setRemoteParticipants(prev => prev.filter(p => p !== participant));
     
-    if (participant.identity.includes('agent') || participant.name?.includes('agent') || participant.identity.includes('Assistant')) {
+    if (participant.identity.includes('agent') || 
+        participant.name?.includes('agent') || 
+        participant.identity.includes('Assistant')) {
       setAgentConnected(false);
     }
   };
 
-  // LiveKit connect
+  // LiveKit connect with CRITICAL FIX
   const connectLiveKit = async (livekitUrl: string, accessToken: string, roomName: string) => {
     if (!livekitUrl || !accessToken) {
       setError('Missing LiveKit URL or access token');
@@ -200,6 +223,7 @@ export default function LiveVision({ onClose }: LiveVisionProps) {
       setIsConnecting(true);
       setError(null);
       setAgentConnected(false);
+      setVideoStreamActive(false);
 
       console.log('Connecting to LiveKit:', { livekitUrl, roomName });
 
@@ -217,24 +241,41 @@ export default function LiveVision({ onClose }: LiveVisionProps) {
           setIsStreaming(false);
           setRemoteParticipants([]);
           setAgentConnected(false);
+          setVideoStreamActive(false);
         })
         .on('participantConnected', handleParticipantConnected)
         .on('participantDisconnected', handleParticipantDisconnected)
         .on('trackSubscribed', handleTrackSubscribed)
         .on('trackUnsubscribed', handleTrackUnsubscribed)
         .on('localTrackPublished', (publication) => {
-          console.log('Local track published:', publication.trackSid);
+          console.log('Local track published:', {
+            trackSid: publication.trackSid,
+            kind: publication.kind,
+            source: publication.source
+          });
+          if (publication.kind === Track.Kind.Video) {
+            setVideoStreamActive(true);
+            console.log('📹 Video stream now active!');
+          }
         })
         .on('trackPublished', (publication, participant) => {
-          console.log('Remote track published:', publication.trackSid, participant.identity);
+          console.log('Remote track published:', {
+            trackSid: publication.trackSid,
+            kind: publication.kind,
+            participant: participant.identity
+          });
         })
         .on('connected', () => {
-          console.log('Successfully connected to room');
+          console.log('✅ Successfully connected to room');
           console.log('Room participants:', Array.from(room.remoteParticipants.values()).map(p => ({
             identity: p.identity,
             name: p.name,
             metadata: p.metadata,
-            tracks: p.getTrackPublications().map(t => t.trackSid)
+            tracks: p.getTrackPublications().map(t => ({
+              sid: t.trackSid,
+              kind: t.kind,
+              source: t.source
+            }))
           })));
         });
 
@@ -245,16 +286,37 @@ export default function LiveVision({ onClose }: LiveVisionProps) {
 
       roomRef.current = room;
 
-      // Create and publish tracks using LiveKit's track system
-      const videoTrack = await createLocalVideoTrack({ resolution: VideoPresets.h720 });
+      // 🔴 CRITICAL FIX: Create and publish tracks with EXPLICIT SOURCE
+      console.log('📹 Publishing video track with Camera source...');
+      const videoTrack = await createLocalVideoTrack({ 
+        resolution: VideoPresets.h720,
+        facingMode: 'user'
+      });
+      
+      // THIS IS THE KEY FIX - specify Track.Source.Camera
+      await room.localParticipant.publishTrack(videoTrack, {
+        source: Track.Source.Camera,
+        name: 'camera'
+      });
+      console.log('✅ Video track published with Camera source');
+
+      console.log('🎤 Publishing audio track...');
       const audioTrack = await createLocalAudioTrack();
+      await room.localParticipant.publishTrack(audioTrack, {
+        source: Track.Source.Microphone,
+        name: 'microphone'
+      });
+      console.log('✅ Audio track published');
 
-      await room.localParticipant.publishTrack(videoTrack);
-      await room.localParticipant.publishTrack(audioTrack);
+      console.log('📊 Local participant tracks:', 
+        Array.from(room.localParticipant.trackPublications.values()).map(p => ({
+          sid: p.trackSid,
+          kind: p.kind,
+          source: p.source
+        }))
+      );
 
-      console.log('Local tracks published, waiting for agent...');
-
-      // Check for existing remote participants (agent might already be there)
+      // Check for existing remote participants
       if (room.remoteParticipants.size > 0) {
         console.log('Found existing remote participants:', room.remoteParticipants.size);
         room.remoteParticipants.forEach(participant => {
@@ -268,10 +330,12 @@ export default function LiveVision({ onClose }: LiveVisionProps) {
       // Set timeout to warn if no agent connects
       setTimeout(() => {
         if (!agentConnected && room.remoteParticipants.size === 0) {
-          setError('No AI agent detected in the room. Please check if your agent is running and configured correctly.');
-          console.log('Available participants:', Array.from(room.remoteParticipants.values()));
+          setError('No AI agent detected. Please check if your agent is running with the correct agent_name="Assistant"');
+          console.log('⚠️ No agent detected. Available participants:', 
+            Array.from(room.remoteParticipants.values()).map(p => p.identity)
+          );
         }
-      }, 10000); // 10 second timeout
+      }, 10000);
 
     } catch (err) {
       console.error('Failed to connect to LiveKit:', err);
@@ -302,6 +366,7 @@ export default function LiveVision({ onClose }: LiveVisionProps) {
     setRemoteParticipants([]);
     setAgentConnected(false);
     setConnectionDetails(null);
+    setVideoStreamActive(false);
   };
 
   const toggleCamera = async () => {
@@ -324,11 +389,9 @@ export default function LiveVision({ onClose }: LiveVisionProps) {
         await startCamera();
       }
       
-      // Fetch connection details first
       const details = await fetchConnectionDetails();
       setConnectionDetails(details);
       
-      // Connect to LiveKit with the fetched details
       await connectLiveKit(details.serverUrl, details.participantToken, details.roomName);
     } catch (err) {
       console.error('Failed to start streaming:', err);
@@ -341,7 +404,6 @@ export default function LiveVision({ onClose }: LiveVisionProps) {
     if (onClose) onClose();
   };
 
-  // Manual play for audio (in case of browser restrictions)
   const playAudioManually = () => {
     if (audioRef.current) {
       audioRef.current.play().then(() => {
@@ -421,6 +483,12 @@ export default function LiveVision({ onClose }: LiveVisionProps) {
               {agentConnected ? 'AI Agent Connected' : 'Waiting for AI Agent...'}
             </span>
           </div>
+          {videoStreamActive && (
+            <div className="flex items-center space-x-2 mt-1 text-green-400">
+              <Eye size={14} />
+              <span className="text-xs">Agent can see you</span>
+            </div>
+          )}
           {connectionDetails?.roomName && <div className="text-xs mt-1">Room: {connectionDetails.roomName}</div>}
           <div className="text-xs mt-1">Participants: {remoteParticipants.length + 1}</div>
           {!agentConnected && (
@@ -428,7 +496,7 @@ export default function LiveVision({ onClose }: LiveVisionProps) {
               onClick={playAudioManually}
               className="mt-2 bg-blue-500 hover:bg-blue-600 px-2 py-1 rounded text-xs w-full"
             >
-              Check Audio
+              Enable Audio
             </button>
           )}
         </div>
@@ -450,6 +518,12 @@ export default function LiveVision({ onClose }: LiveVisionProps) {
               <div className="flex items-center space-x-2 bg-green-500/80 px-3 py-1 rounded-full text-white text-sm">
                 <Bot size={16} />
                 <span>AI Listening</span>
+              </div>
+            )}
+            {videoStreamActive && (
+              <div className="flex items-center space-x-2 bg-blue-500/80 px-3 py-1 rounded-full text-white text-sm">
+                <Eye size={16} />
+                <span>AI Watching</span>
               </div>
             )}
             {isStreaming && (
