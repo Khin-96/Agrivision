@@ -59,6 +59,7 @@ model User {
   accounts      Account[]
   sessions      Session[]
   products      Product[]   // ✅ relation to Product
+  analyses      Analysis[]   // ✅ relation to Analysis
 }
 
 model VerificationToken {
@@ -86,4 +87,14 @@ model Product {
   updatedAt   DateTime @updatedAt
   rating      Float    @default(0)
   reviews     Int      @default(0)
+}
+
+model Analysis {
+  id        String   @id @default(cuid())
+  userId    String
+  imageUrl  String
+  results   Json
+  metadata  Json
+  date      DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

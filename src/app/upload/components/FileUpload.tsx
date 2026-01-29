@@ -2,9 +2,10 @@
 'use client';
 
 import React, { useRef, useState } from 'react';
-import { Upload as UploadIcon, Camera, Video, Image as ImageIcon, AlertCircle, CheckCircle } from 'lucide-react';
+import { Upload as UploadIcon, Camera, Video, Image as ImageIcon, AlertCircle, CheckCircle, Cloud } from 'lucide-react';
 import { analyzeFarmContent, AnalysisResponse } from '@/lib/api';
-import { toast } from 'react-hot-toast'; // Install: npm install react-hot-toast
+import { toast } from 'react-hot-toast';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface UploadProgress {
   progress: number;
@@ -15,10 +16,11 @@ interface UploadProgress {
 
 interface FileUploadProps {
   onAnalysisComplete?: (result: AnalysisResponse) => void;
-  onVisionContextUpdate?: (context: string) => void; // New prop for Vision context
+  onVisionContextUpdate?: (context: string) => void;
 }
 
 export default function FileUpload({ onAnalysisComplete, onVisionContextUpdate }: FileUploadProps) {
+  const { user } = useAuth();
   const imageInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
   const [uploadProgress, setUploadProgress] = useState<UploadProgress>({
@@ -32,48 +34,84 @@ export default function FileUpload({ onAnalysisComplete, onVisionContextUpdate }
   const createVisionContext = (result: AnalysisResponse): string => {
     try {
       const contextParts = [];
-      
+
       // Add basic analysis
       if (result.analysis) {
         contextParts.push(`ANALYSIS RESULTS:\n${result.analysis}`);
       }
-      
+
       // Add categorized information
       if (result.categories && result.categories.length > 0) {
         contextParts.push(`CATEGORIES: ${result.categories.join(', ')}`);
       }
-      
+
       if (result.suggestions && result.suggestions.length > 0) {
         contextParts.push(`KEY RECOMMENDATIONS:\n${result.suggestions.map(s => `- ${s}`).join('\n')}`);
       }
-      
+
       if (result.risks && result.risks.length > 0) {
         contextParts.push(`IDENTIFIED RISKS:\n${result.risks.map(r => `- ${r}`).join('\n')}`);
       }
-      
+
       if (result.didYouKnow && result.didYouKnow.length > 0) {
         contextParts.push(`INTERESTING FACTS:\n${result.didYouKnow.map(f => `- ${f}`).join('\n')}`);
       }
-      
+
       // Add metadata
       if (result.filename && result.type) {
         contextParts.push(`FILE INFO: ${result.filename} (${result.type})`);
       }
-      
+
       const context = contextParts.join('\n\n');
-      
+
       // Log context creation for debugging
       console.log('Vision context created:', {
         contextLength: context.length,
         sections: contextParts.length,
         filename: result.filename
       });
-      
+
       return context;
     } catch (error) {
       console.error('Error creating vision context:', error);
       toast.error('Failed to prepare analysis context');
       return result.analysis || 'Analysis completed but context preparation failed.';
+    }
+  };
+
+  /**
+   * Saves analysis to cloud database if user is logged in
+   */
+  const saveToCloud = async (result: AnalysisResponse, imageUrl: string) => {
+    if (!user) {
+      console.log('User not logged in, skipping cloud sync');
+      return;
+    }
+
+    try {
+      const response = await fetch('/api/history', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          imageUrl,
+          results: result,
+          metadata: {
+            filename: result.filename,
+            type: result.type,
+            uploadedAt: new Date().toISOString(),
+          },
+        }),
+      });
+
+      if (response.ok) {
+        console.log('✅ Analysis saved to cloud');
+        toast.success('Analysis saved to your cloud history', { duration: 2000 });
+      } else {
+        console.warn('Failed to save to cloud, keeping local only');
+      }
+    } catch (error) {
+      console.error('Cloud sync error:', error);
+      // Don't show error to user - local storage still works
     }
   };
 
@@ -118,7 +156,7 @@ export default function FileUpload({ onAnalysisComplete, onVisionContextUpdate }
       const result = await analyzeFarmContent(file, type);
 
       clearInterval(progressInterval);
-      
+
       if (result.success) {
         console.log('Analysis successful:', {
           filename: result.filename,
@@ -135,24 +173,28 @@ export default function FileUpload({ onAnalysisComplete, onVisionContextUpdate }
 
         // Create context for Vision AI
         const visionContext = createVisionContext(result);
-        
+
         // Update Vision with the analysis context
         if (onVisionContextUpdate) {
           onVisionContextUpdate(visionContext);
           console.log('Vision context updated successfully');
         }
-        
+
         // Trigger completion callback
         if (onAnalysisComplete) {
           onAnalysisComplete(result);
         }
+
+        // Save to cloud if user is logged in
+        const imageUrl = URL.createObjectURL(file);
+        await saveToCloud(result, imageUrl);
 
         // Show success toast with key insights
         const insightsCount = (result.suggestions?.length || 0) + (result.risks?.length || 0);
         setTimeout(() => {
           toast.success(
             `Analysis complete! Found ${insightsCount} key insights. Ask Vision for details!`,
-            { 
+            {
               id: 'upload-progress',
               duration: 5000
             }
@@ -161,7 +203,7 @@ export default function FileUpload({ onAnalysisComplete, onVisionContextUpdate }
 
       } else {
         console.error('Analysis failed:', result.error);
-        
+
         setUploadProgress({
           progress: 0,
           status: 'error',
@@ -178,9 +220,9 @@ export default function FileUpload({ onAnalysisComplete, onVisionContextUpdate }
 
     } catch (error) {
       console.error('Upload/analysis error:', error);
-      
+
       const errorMessage = error instanceof Error ? error.message : 'Upload failed. Please try again.';
-      
+
       setUploadProgress({
         progress: 0,
         status: 'error',
@@ -211,13 +253,13 @@ export default function FileUpload({ onAnalysisComplete, onVisionContextUpdate }
     if (type === 'image' && !file.type.startsWith('image/')) {
       const error = 'Please select a valid image file (JPG, PNG, WEBP)';
       console.warn('Invalid image type:', file.type);
-      
+
       setUploadProgress({
         progress: 0,
         status: 'error',
         error
       });
-      
+
       setTimeout(() => {
         toast.error(error);
       }, 0);
@@ -227,13 +269,13 @@ export default function FileUpload({ onAnalysisComplete, onVisionContextUpdate }
     if (type === 'video' && !file.type.startsWith('video/')) {
       const error = 'Please select a valid video file (MP4, MOV, AVI)';
       console.warn('Invalid video type:', file.type);
-      
+
       setUploadProgress({
         progress: 0,
         status: 'error',
         error
       });
-      
+
       setTimeout(() => {
         toast.error(error);
       }, 0);
@@ -249,13 +291,13 @@ export default function FileUpload({ onAnalysisComplete, onVisionContextUpdate }
         maxSize,
         filename: file.name
       });
-      
+
       setUploadProgress({
         progress: 0,
         status: 'error',
         error
       });
-      
+
       setTimeout(() => {
         toast.error(error);
       }, 0);
@@ -275,7 +317,7 @@ export default function FileUpload({ onAnalysisComplete, onVisionContextUpdate }
     if (!file) return;
 
     processFile(file, type);
-    
+
     // Reset input value to allow re-uploading the same file
     e.target.value = '';
   };
@@ -312,11 +354,10 @@ export default function FileUpload({ onAnalysisComplete, onVisionContextUpdate }
           Upload Image for Analysis
         </h3>
         <div
-          className={`border-2 border-dashed border-green-300 rounded-lg p-8 text-center cursor-pointer transition-colors ${
-            uploadProgress.status === 'uploading' || uploadProgress.status === 'analyzing'
-              ? 'bg-green-50 cursor-not-allowed opacity-70'
-              : 'hover:bg-green-50'
-          }`}
+          className={`border-2 border-dashed border-green-300 rounded-lg p-8 text-center cursor-pointer transition-colors ${uploadProgress.status === 'uploading' || uploadProgress.status === 'analyzing'
+            ? 'bg-green-50 cursor-not-allowed opacity-70'
+            : 'hover:bg-green-50'
+            }`}
           onClick={() => {
             if (uploadProgress.status === 'uploading' || uploadProgress.status === 'analyzing') return;
             imageInputRef.current?.click();
@@ -350,11 +391,10 @@ export default function FileUpload({ onAnalysisComplete, onVisionContextUpdate }
           Upload Video for Analysis
         </h3>
         <div
-          className={`border-2 border-dashed border-green-300 rounded-lg p-8 text-center cursor-pointer transition-colors ${
-            uploadProgress.status === 'uploading' || uploadProgress.status === 'analyzing'
-              ? 'bg-green-50 cursor-not-allowed opacity-70'
-              : 'hover:bg-green-50'
-          }`}
+          className={`border-2 border-dashed border-green-300 rounded-lg p-8 text-center cursor-pointer transition-colors ${uploadProgress.status === 'uploading' || uploadProgress.status === 'analyzing'
+            ? 'bg-green-50 cursor-not-allowed opacity-70'
+            : 'hover:bg-green-50'
+            }`}
           onClick={() => {
             if (uploadProgress.status === 'uploading' || uploadProgress.status === 'analyzing') return;
             videoInputRef.current?.click();
@@ -395,7 +435,7 @@ export default function FileUpload({ onAnalysisComplete, onVisionContextUpdate }
               </button>
             )}
           </div>
-          
+
           {/* Uploading State */}
           {uploadProgress.status === 'uploading' && (
             <div className="space-y-2">
@@ -408,7 +448,7 @@ export default function FileUpload({ onAnalysisComplete, onVisionContextUpdate }
               <p className="text-sm text-gray-600">Uploading... {Math.round(uploadProgress.progress)}%</p>
             </div>
           )}
-          
+
           {/* Analyzing State */}
           {uploadProgress.status === 'analyzing' && (
             <div className="space-y-2">
@@ -418,7 +458,7 @@ export default function FileUpload({ onAnalysisComplete, onVisionContextUpdate }
               <p className="text-sm text-gray-600">Analyzing content with AI...</p>
             </div>
           )}
-          
+
           {/* Error State */}
           {uploadProgress.status === 'error' && uploadProgress.error && (
             <div className="bg-red-50 border border-red-200 p-4 rounded-lg flex items-start">
@@ -429,7 +469,7 @@ export default function FileUpload({ onAnalysisComplete, onVisionContextUpdate }
               </div>
             </div>
           )}
-          
+
           {/* Success State */}
           {uploadProgress.status === 'success' && uploadProgress.result && (
             <div className="space-y-4">
@@ -442,7 +482,7 @@ export default function FileUpload({ onAnalysisComplete, onVisionContextUpdate }
                   </p>
                 </div>
               </div>
-              
+
               {/* Quick Results Preview */}
               <div className="bg-gray-50 border border-gray-200 p-4 rounded-lg">
                 <h4 className="text-sm font-medium text-gray-800 mb-2">Quick Insights:</h4>

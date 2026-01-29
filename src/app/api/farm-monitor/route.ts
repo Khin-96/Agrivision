@@ -46,6 +46,12 @@ const GROQ_MODEL = process.env.GROQ_MODEL || "llama-3.1-8b-instant";
 const isSwahiliQuestion = (q: string) =>
   /^(naomba|tafadhali|habari|hali|mvua|udongo|mazao|shamba|kulima|jua|hewa|baridi|moto|majani|mimea|mbegu|mchanga|rutuba)/i.test(q);
 
+const isLocationQuestion = (q: string) =>
+  /where|location|address|place|situated|located|find|position/i.test(q);
+
+const isDirectionQuestion = (q: string) =>
+  /direction|route|how to get|navigate|way to|path to|drive to|travel to/i.test(q);
+
 function centroid(coords: Coordinate[]): Coordinate {
   const sum = coords.reduce((acc, c) => ({ lat: acc.lat + c.lat, lng: acc.lng + c.lng }), { lat: 0, lng: 0 });
   return { lat: sum.lat / coords.length, lng: sum.lng / coords.length };
@@ -79,15 +85,31 @@ async function reverseGeocode(lat: number, lng: number) {
     const payload = await res.json();
     const first = payload.results?.[0];
     const comps = first?.address_components || [];
-    
+
     const find = (type: string) => comps.find((c: AddressComponent) => c.types?.includes(type))?.long_name;
-    
+
     const street = find("route") || find("street_address") || "Nearby road";
     const locality = find("locality") || find("sublocality") || find("postal_town");
     const admin = find("administrative_area_level_1") || find("administrative_area_level_2");
-    return { fullAddress: first?.formatted_address || `${lat},${lng}`, landmark: locality || admin || street, street };
+    const country = find("country");
+
+    return {
+      fullAddress: first?.formatted_address || `${lat},${lng}`,
+      landmark: locality || admin || street,
+      street,
+      locality,
+      admin,
+      country
+    };
   } catch {
-    return { fullAddress: `${lat},${lng}`, landmark: "this area", street: "the main road" };
+    return {
+      fullAddress: `${lat},${lng}`,
+      landmark: "this area",
+      street: "the main road",
+      locality: "",
+      admin: "",
+      country: ""
+    };
   }
 }
 
@@ -245,7 +267,7 @@ async function generateRealFieldData(field: { coordinates: Coordinate[] }): Prom
 export async function POST(req: Request) {
   try {
     const body = await req.json().catch(() => ({}));
-    const { field, question = "", centroid: centroidOverride } = body;
+    const { field, question = "", centroid: centroidOverride, userLocation } = body;
 
     if (!field?.coordinates?.length) {
       return NextResponse.json({ answer: "Please draw a field on the map first." });
@@ -258,21 +280,83 @@ export async function POST(req: Request) {
     ]);
 
     const useSwahili = isSwahiliQuestion(question);
+    const isLocationQ = isLocationQuestion(question);
+    const isDirectionQ = isDirectionQuestion(question);
 
     // -------------------
     // Groq AI dynamic response
     // -------------------
     const client = new Groq({ apiKey: GROQ_KEY });
-    const systemPrompt = useSwahili
-      ? `Wewe ni msaidizi wa kilimo. Toa muhtasari kamili wa shamba, hali ya mazao, aina ya mimea, na mapendekezo kwa mkulima.`
-      : `You are a farm assistant. Provide a complete summary of the field, crop condition, crop type, and actionable recommendations for the farmer.`;
 
-    const userPrompt = `
-Field near ${location.landmark}, ${location.street}.
-Crop: ${fieldData.cropType}, Health: ${fieldData.health}, Soil: ${fieldData.soilMoisture}%, pH: ${fieldData.phAdvice}, Temp: ${fieldData.temperature}°C, Weather: ${fieldData.weather}.
-Recommendations: ${fieldData.recommendations.join(", ")}.
+    let systemPrompt = "";
+    let userPrompt = "";
+
+    if (isLocationQ) {
+      // Location-specific query
+      systemPrompt = useSwahili
+        ? `Wewe ni msaidizi wa kilimo. Eleza mahali shamba lipo kwa undani, toa maelezo ya eneo, na toa maelekezo ya jinsi ya kufika pale.`
+        : `You are a farm location assistant. Provide detailed information about where the farm is located, describe the area, and offer guidance on how to reach it.`;
+
+      userPrompt = `
+Farm Location Details:
+- Full Address: ${location.fullAddress}
+- Landmark: ${location.landmark}
+- Street: ${location.street}
+- Locality: ${location.locality || "N/A"}
+- Region: ${location.admin || "N/A"}
+- Country: ${location.country || "N/A"}
+- Coordinates: ${center.lat.toFixed(6)}, ${center.lng.toFixed(6)}
+- Elevation: ${fieldData.elevation}m above sea level
+
+${userLocation ? `User's current location: ${userLocation.lat.toFixed(6)}, ${userLocation.lng.toFixed(6)}` : ""}
+
+Farmer question: ${question}
+
+Provide a comprehensive answer about the farm's location. If the user's location is available, mention how they can navigate there.
+`;
+    } else if (isDirectionQ) {
+      // Direction-specific query
+      systemPrompt = useSwahili
+        ? `Wewe ni msaidizi wa mwongozo. Toa maelekezo kamili ya jinsi ya kusafiri kutoka mahali fulani kwenda shamba.`
+        : `You are a navigation assistant. Provide clear directions and travel guidance to reach the farm.`;
+
+      userPrompt = `
+Farm Destination:
+- Address: ${location.fullAddress}
+- Coordinates: ${center.lat.toFixed(6)}, ${center.lng.toFixed(6)}
+
+${userLocation ? `Starting from: ${userLocation.lat.toFixed(6)}, ${userLocation.lng.toFixed(6)}` : "User location not available"}
+
+Farmer question: ${question}
+
+${userLocation
+          ? "Provide helpful navigation advice. Mention that detailed turn-by-turn directions with distance and time estimates are available through the map's routing feature."
+          : "Inform the user that they need to enable location services to get personalized directions. Explain that the system can provide turn-by-turn navigation once their location is available."}
+`;
+    } else {
+      // General farm query
+      systemPrompt = useSwahili
+        ? `Wewe ni msaidizi wa kilimo. Toa muhtasari kamili wa shamba, hali ya mazao, aina ya mimea, na mapendekezo kwa mkulima.`
+        : `You are a farm assistant. Provide a complete summary of the field, crop condition, crop type, and actionable recommendations for the farmer.`;
+
+      userPrompt = `
+Field Information:
+- Location: ${location.landmark}, ${location.street}
+- Address: ${location.fullAddress}
+- Crop: ${fieldData.cropType}
+- Health: ${fieldData.health}
+- Soil Moisture: ${fieldData.soilMoisture}%
+- pH: ${fieldData.phAdvice}
+- Temperature: ${fieldData.temperature}°C
+- Weather: ${fieldData.weather}
+- Elevation: ${fieldData.elevation}m
+- Pollen: ${fieldData.pollen}
+
+Recommendations: ${fieldData.recommendations.join(", ")}
+
 Farmer question: ${question}
 `;
+    }
 
     const chat = await client.chat.completions.create({
       model: GROQ_MODEL,
@@ -285,7 +369,7 @@ Farmer question: ${question}
 
     const answer = chat.choices?.[0]?.message?.content?.trim() || "No response generated.";
 
-    return NextResponse.json({ answer, fieldData });
+    return NextResponse.json({ answer, fieldData, location });
 
   } catch (err: any) {
     console.error("farm-monitor route error:", err);

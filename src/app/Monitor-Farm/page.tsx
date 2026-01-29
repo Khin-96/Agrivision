@@ -4,14 +4,15 @@ import { useState, useEffect } from "react";
 import dynamic from "next/dynamic";
 import Layout from "@/components/layout/Layout";
 
-// Dynamically import FarmMapInner to avoid SSR issues
-const FarmMapInner = dynamic(() => import("./component/FarmMapInner"), {
+// Dynamically import FarmMapGraphHopper to avoid SSR issues
+// This uses Leaflet + GraphHopper instead of Google Maps
+const FarmMapGraphHopper = dynamic(() => import("./component/FarmMapGraphHopper"), {
   ssr: false,
   loading: () => (
     <div className="h-full bg-slate-50 flex items-center justify-center">
       <div className="text-center">
         <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-        <p className="text-gray-600">Loading Farm Intelligence...</p>
+        <p className="text-gray-600">Loading Farm Intelligence with GraphHopper...</p>
       </div>
     </div>
   ),
@@ -95,7 +96,7 @@ export default function MonitorFarmPage() {
 
         {/* Main Map Area */}
         <main className="flex-1 relative">
-          <FarmMapInner />
+          <FarmMapGraphHopper />
         </main>
       </div>
     </Layout>
