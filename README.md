@@ -56,6 +56,8 @@ We have carefully selected cutting-edge technologies to solve specific agricultu
 - **Data Privacy**: Images of proprietary crop strains or field conditions do not leave the farmer's device unless they explicitly choose to save them to the cloud history.
 - **Instant Results**: Identification happens in milliseconds, allowing for immediate decision-making.
 
+![Disease Analysis](/Screenshots/upload.png)
+
 ### 4. Geospatial Visualization (Leaflet & OpenStreetMap)
 **The Technology**: The frontend mapping interface is built on **Leaflet.js**, utilizing tile layers from **OpenStreetMap (OSM)** and satellite imagery.
 
@@ -66,6 +68,22 @@ We have carefully selected cutting-edge technologies to solve specific agricultu
 **Benefit to the Farmer**:
 - **Visual Management**: Provides a "God's eye view" of the entire operation. A farmer can see at a glance that "The North Field" is healthy (green polygon) while "The River Field" is stressed (yellow polygon).
 - **Precision Inputs**: By accurately defining field areas, farmers can calculate exact input needs (fertilizer, seeds) based on acreage, preventing waste and over-purchasing.
+
+![Mapping Interface](/Screenshots/mapping-interface.png)
+
+### 5. Digital Marketplace (E-Commerce)
+**The Technology**: A full-stack marketplace built with Next.js, integrating MongoDB for inventory management and robust search algorithms.
+
+**How We Use It**:
+- **Integrated Commerce Hub**: A unified platform where the "Sell" component allows farmers to list produce directly from the field, and the "Buy" component connects them with retailers and consumers.
+- **Visual Listings**: Farmers can upload photos of their harvest, set prices, and manage availability in real-time.
+
+**Benefit to the Farmer**:
+- **Direct-to-Consumer**: Eliminates middlemen by connecting farmers directly with buyers, ensuring better profit margins.
+- **Market Access**: Gives smallholder farmers a digital storefront to reach a wider audience beyond their local community.
+- **Reduced Post-Harvest Loss**: Faster connections to buyers mean fresh produce moves quickly, reducing spoilage.
+
+![Marketplace Hub](/Screenshots/marketplay.png)
 
 ---
 
