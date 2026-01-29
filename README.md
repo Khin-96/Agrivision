@@ -95,10 +95,10 @@ graph TD
         Market[Marketplace Module]
     end
 
-    subgraph AI and Data Layer
-        TF[TensorFlow.js - Disease Detection]
-        LLM[Llama 3.1 via Groq - Chat Intelligence]
-        GH[GraphHopper - Route Optimization]
+    subgraph External APIs
+        Gemini[Gemini 2.5 Flash API - Image Analysis]
+        Groq[Groq API - Llama 3.1 Chat]
+        GH[GraphHopper API - Route Optimization]
     end
 
     subgraph Storage
@@ -114,9 +114,9 @@ graph TD
     UI --> Maps
     UI --> Market
 
-    Vision --> TF
+    Vision --> Gemini
     Vision --> Cloud
-    Chat --> LLM
+    Chat --> Groq
     Maps --> GH
     Market --> DB
 
@@ -127,10 +127,10 @@ graph TD
 ```
 
 **How It Works**:
-1. The farmer opens the app on their phone and uploads an image.
-2. The **Vision AI Engine** uses TensorFlow.js to analyze the image directly on the device.
-3. Results are passed to the **AI Agronomist Chatbot**, which uses Llama 3.1 to answer follow-up questions.
-4. If the farmer wants to check their fields, the **Farm Mapping Service** uses GraphHopper to calculate optimal inspection routes.
+1. The farmer opens the app on their phone and uploads an image or goes live with their camera.
+2. The image is sent to **Google Gemini 2.5 Flash API** for analysis, which identifies diseases and crop conditions.
+3. Results are passed to the **AI Agronomist Chatbot**, powered by **Groq API** with Llama 3.1, which answers follow-up questions.
+4. If the farmer wants to check their fields, the **Farm Mapping Service** calls the **GraphHopper API** to calculate optimal inspection routes.
 5. When ready to sell, the **Marketplace Module** stores listings in MongoDB and images in Cloudinary.
 
 ![About Page](public/Screenshots/about-us.png)
@@ -140,7 +140,7 @@ graph TD
 For those interested in the underlying systems:
 
 *   **Frontend**: Next.js 15, React 19, Tailwind CSS, Framer Motion
-*   **AI/ML**: TensorFlow.js for on-device disease detection, Groq SDK with Llama 3.1 for chatbot
+*   **AI/ML**: Google Gemini 2.5 Flash API for image analysis, Groq API with Llama 3.1 for chatbot
 *   **Maps**: Leaflet.js, GraphHopper API for routing and isochrones
 *   **Database**: MongoDB with Prisma ORM
 *   **Storage**: Cloudinary for product images
