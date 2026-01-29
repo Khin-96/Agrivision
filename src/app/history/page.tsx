@@ -4,13 +4,16 @@ import { useState, useEffect } from 'react';
 import Layout from '@/components/layout/Layout';
 import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Database, Cloud } from 'lucide-react';
 
 export default function HistoryPage() {
   const { user } = useAuth();
   const [historyItems, setHistoryItems] = useState<any[]>([]);
   const [selectedItem, setSelectedItem] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+
+  // Derived state for view source
+  const viewSource = user ? 'cloud' : 'local';
 
   // Load history - cloud for logged in users, local storage otherwise
   useEffect(() => {
@@ -110,8 +113,8 @@ export default function HistoryPage() {
                         <li
                           key={item.id}
                           className={`px-6 py-4 cursor-pointer transition-colors duration-200 ${selectedItem?.id === item.id
-                              ? 'bg-green-50 border-l-4 border-green-600'
-                              : 'hover:bg-gray-50'
+                            ? 'bg-green-50 border-l-4 border-green-600'
+                            : 'hover:bg-gray-50'
                             }`}
                           onClick={() => handleSelectItem(item)}
                         >
@@ -131,8 +134,8 @@ export default function HistoryPage() {
                                 {formatDate(item.date)}
                               </p>
                               <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium mt-1 ${healthy
-                                  ? 'bg-green-100 text-green-800'
-                                  : 'bg-red-100 text-red-800'
+                                ? 'bg-green-100 text-green-800'
+                                : 'bg-red-100 text-red-800'
                                 }`}>
                                 {healthy ? 'Healthy' : 'Issue Detected'}
                               </span>

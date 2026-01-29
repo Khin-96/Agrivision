@@ -1,310 +1,175 @@
-# AgriVision - Advanced Farm Monitoring & Navigation
+# AgriVision: Intelligent Farming for the Future
 
-## Overview
+AgriVision is a comprehensive precision agriculture platform designed to bridge the gap between advanced technology and practical farming. By integrating computer vision, geospatial analysis, and generative AI, AgriVision empowers farmers to make data-driven decisions that increase yield, reduce waste, and ensure crop health.
 
-AgriVision is now equipped with **GraphHopper-powered mapping** and **GROQ AI-enhanced navigation**, replacing Google Maps with a more powerful, cost-effective solution.
-
-## What's New in Version 2.0
-
-### Bug Fixes
-- [x] Fixed "FarmMapInner is not defined" error
-- [x] Added Leaflet CSS for proper map rendering
-- [x] Improved component imports and exports
-
-### New Features
-
-#### 1. Isochrone Mapping
-Show areas reachable within specific time limits. Perfect for:
-- Delivery zone planning
-- Service area analysis
-- Accessibility mapping
-
-#### 2. Multi-Stop Routing
-Get multiple route options with:
-- Alternative routes (up to 3)
-- Distance and time comparison
-- Vehicle type selection (car/bike/foot)
-
-#### 3. Offline Maps
-Work without internet:
-- Automatic tile caching
-- Multiple map layers
-- Offline navigation
-
-#### 4. Custom Overlays
-Switch between map views:
-- **Street** - Standard navigation
-- **Satellite** - High-resolution imagery
-- **Terrain** - Topographic with elevation
-
-#### 5. Route Sharing
-Share directions easily:
-- Native share (mobile)
-- Clipboard copy (desktop)
-- Shareable links with distance/time
-
-#### 6. Voice Navigation
-Hands-free turn-by-turn guidance:
-- Text-to-speech instructions
-- Automatic progression
-- Adjustable voice settings
-
-#### 7. Traffic Integration
-Real-time route optimization:
-- Dynamic route updates
-- Vehicle-specific routing
-- Alternative route suggestions
-
-## Quick Start
-
-### 1. Get GraphHopper API Key
-
-```bash
-# Visit https://www.graphhopper.com/
-# Sign up for free account
-# Get your API key
-```
-
-### 2. Configure Environment
-
-Update `.env`:
-```bash
-NEXT_PUBLIC_GRAPHHOPPER_API_KEY=your_key_here
-GRAPHHOPPER_API_KEY=your_key_here
-```
-
-### 3. Install & Run
-
-```bash
-npm install
-npm run dev
-```
-
-Visit: http://localhost:3000/Monitor-Farm
-
-## Usage Guide
-
-### Drawing Fields
-1. Click polygon tool on map
-2. Click points to create boundary
-3. Complete polygon
-4. System analyzes automatically
-
-### Getting Directions
-**Method 1: AI Chat**
-- Ask: "How do I get to this farm?"
-- Allow location access
-- View route and instructions
-
-**Method 2: Map Click**
-- Click field polygon
-- Click "Get Directions"
-- View turn-by-turn navigation
-
-### Using Advanced Features
-
-**Isochrone Mapping:**
-- Click location button
-- Click clock button
-- View reachable zones
-
-**Map Layers:**
-- Click layers button
-- Select Street/Satellite/Terrain
-
-**Voice Navigation:**
-- Calculate route
-- Click speaker icon
-- Listen to instructions
-
-**Route Sharing:**
-- Calculate route
-- Click share icon
-- Share via native/clipboard
-
-## Documentation
-
-### Quick Reference
-- **[QUICK_START.md](./QUICK_START.md)** - 5-minute setup guide
-- **[ADVANCED_FEATURES.md](./ADVANCED_FEATURES.md)** - Feature documentation
-- **[CODE_EXAMPLES.md](./CODE_EXAMPLES.md)** - Code snippets
-- **[COMPLETE_SUMMARY.md](./COMPLETE_SUMMARY.md)** - Implementation details
-
-### Technical Guides
-- **[GRAPHHOPPER_GUIDE.md](./GRAPHHOPPER_GUIDE.md)** - Complete API guide
-- **[IMPLEMENTATION_SUMMARY.md](./IMPLEMENTATION_SUMMARY.md)** - Architecture
-
-## Features Comparison
-
-| Feature | Google Maps | GraphHopper |
-|---------|-------------|-------------|
-| **Cost** | Paid (requires billing) | Free tier (500 req/day) |
-| **Routing** | Basic | Advanced + alternatives |
-| **Offline** | Limited | Full support |
-| **Customization** | Limited | Highly customizable |
-| **Open Source** | No | Yes |
-| **Privacy** | Data tracking | Better privacy |
-
-## Architecture
-
-```
-┌─────────────────┐
-│  User Interface │
-└────────┬────────┘
-         │
-    ┌────┴────┬──────────┬─────────┐
-    │         │          │         │
-┌───▼───┐ ┌──▼──┐  ┌────▼────┐ ┌─▼──┐
-│Leaflet│ │Graph│  │  GROQ   │ │ GEE│
-│  Map  │ │Hopper│  │   AI    │ │    │
-└───────┘ └─────┘  └─────────┘ └────┘
-```
-
-## Technology Stack
-
-- **Frontend:** Next.js 15, React 19
-- **Mapping:** Leaflet + OpenStreetMap
-- **Routing:** GraphHopper API
-- **AI:** GROQ (Llama 3.1)
-- **Satellite:** Google Earth Engine
-- **Styling:** Tailwind CSS
-- **Animations:** Framer Motion
-
-## Browser Support
-
-| Browser | Version | Support |
-|---------|---------|---------|
-| Chrome | 90+ | [x] Full |
-| Firefox | 88+ | [x] Full |
-| Safari | 14+ | [x] Full |
-| Edge | 90+ | [x] Full |
-| IE 11 | - | Partial |
-
-## API Usage
-
-**Free Tier Limits:**
-- GraphHopper: 500 requests/day
-- Includes: Routing, Geocoding, Isochrone
-
-**Optimization:**
-- Route caching
-- Debounced search
-- Request batching
-
-## Keyboard Shortcuts
-
-| Key | Action |
-|-----|--------|
-| `L` | Toggle layers |
-| `V` | Toggle voice |
-| `I` | Show isochrone |
-| `S` | Share route |
-| `D` | Download GPX |
-| `Esc` | Close panels |
-
-## Troubleshooting
-
-### Map Not Loading
-- Check Leaflet CSS is imported
-- Verify internet connection
-- Clear browser cache
-
-### Location Not Working
-- Allow location permissions
-- Use HTTPS or localhost
-- Check browser settings
-
-### Voice Not Working
-- Check browser audio permissions
-- Ensure volume is up
-- Try Chrome (recommended)
-
-### API Errors
-- Verify API key is correct
-- Check daily request limit
-- Review console errors
-
-## Performance
-
-**Loading Times:**
-- Map initialization: ~500ms
-- Route calculation: ~1-2s
-- Isochrone: ~2-3s
-- Layer switching: Instant
-
-**Optimization:**
-- Automatic tile caching
-- Route data caching
-- Debounced API calls
-- Lazy component loading
-
-## Contributing
-
-We welcome contributions! Please:
-1. Fork the repository
-2. Create feature branch
-3. Make your changes
-4. Submit pull request
-
-## License
-
-MIT License - See LICENSE file
-
-## Support
-
-**Documentation:**
-- GraphHopper: https://docs.graphhopper.com/
-- Leaflet: https://leafletjs.com/
-- GROQ: https://groq.com/
-
-**Community:**
-- GitHub Issues
-- Stack Overflow
-- Discord Server
-
-**Contact:**
-- Email: support@agrivision.com
-- Twitter: @AgriVision
-
-## Roadmap
-
-### Q1 2026
-- [x] GraphHopper integration
-- [x] Advanced routing features
-- [x] Voice navigation
-- [ ] Weather overlay
-- [ ] Route history
-
-### Q2 2026
-- [ ] Real-time traffic
-- [ ] Offline sync
-- [ ] Mobile app
-- [ ] Advanced analytics
-
-## Acknowledgments
-
-- GraphHopper for routing API
-- OpenStreetMap contributors
-- Leaflet.js team
-- GROQ for AI capabilities
-- Google Earth Engine
-
-## Version History
-
-**2.0.0** (2026-01-29)
-- Added GraphHopper integration
-- Implemented 7 advanced features
-- Fixed Leaflet CSS issue
-- Enhanced AI responses
-
-**1.0.0** (2025-12-01)
-- Initial release
-- Basic farm monitoring
-- Google Maps integration
-- AI chat assistant
+![AgriVision Dashboard](/Screenshots/hero-dashboard.png)
 
 ---
 
-**Built for farmers worldwide**
+## The Challenge
+Modern farming faces unprecedented challenges: unpredictable climate patterns, complex pest and disease outbreaks, and the rising cost of operations. Farmers often lack immediate access to expert agronomy advice or precise data about their field conditions, leading to reactive rather than proactive management.
 
-**AgriVision - Making farming smarter, one field at a time**
+## The Solution
+AgriVision provides a unified command center for farm management. We combine local device processing with cloud-based intelligence to offer:
+- **Instant Disease Diagnosis**: Identify ongoing crop issues before they spread.
+- **Precision Mapping**: Monitor field health, moisture, and topography.
+- **Actionable Insights**: Get treatment plans and routing optimization instantly.
+
+---
+
+## Detailed Technology Breakdown
+
+We have carefully selected cutting-edge technologies to solve specific agricultural problems. Here is an in-depth look at our stack, how it is implemented, and the tangible value it delivers to the farmer.
+
+### 1. Advanced Logistics & Routing (GraphHopper)
+**The Technology**: We utilize the **GraphHopper API**, a powerful open-source routing engine, to handle all navigation and spatial calculations within the app.
+
+**How We Use It**:
+- **Isochrone Mapping**: We use the Isochrone API to calculate "reachability polygons." Instead of simple distance circles, these polygons show exactly which areas of the farm can be reached within a specific time limit (e.g., 10, 20, or 30 minutes) considering walking or driving speeds.
+- **Route Optimization**: We implement the Route Optimization API to solve the "Traveling Salesman Problem." When a farmer selects multiple fields to inspect, the system automatically reorders the stops to calculate the most efficient path.
+- **Geocoding**: We convert GPS coordinates into human-readable addresses and vice-versa to make location tagging intuitive.
+
+**Benefit to the Farmer**:
+- **Operational Efficiency**: By optimizing routes between multiple scattered fields, farmers save on fuel costs and significantly reduce travel time.
+- **Strategic Planning**: Isochrone maps help farmers understand logistical constraints—for example, knowing exactly which fields are within a 30-minute tractor drive from the storage facility affects harvest planning.
+- **Time Management**: Farmers can plan their day with precision, knowing exactly how long it takes to move equipment between active zones.
+
+### 2. Generative AI Agronomist (Groq & Llama 3.1)
+**The Technology**: We employ **Meta's Llama 3.1** Large Language Model (LLM), served via **Groq's** specialized Language Processing Units (LPUs) for ultra-low latency inference.
+
+**How We Use It**:
+- **Context-Aware Inference**: The system injects real-time farm data (location, soil moisture, elevation, past disease history) into the system prompt. This means the AI doesn't just answer generic questions; it answers questions specifically about *this* farm.
+- **High-Speed Chat**: We use Groq chips because they deliver tokens at exceptional speeds, making the conversation feel natural and instantaneous rather than transactional.
+
+**Benefit to the Farmer**:
+- **24/7 Expert Access**: Farmers get instant access to an "agronomist" that never sleeps. They can ask complex questions like "Given the recent rain and my soil drainage in Field A, should I apply nitrogen today?" and receive a scientifically grounded answer.
+- **Reduced Cognitive Load**: Instead of interpreting raw data charts, the farmer can simply converse with the data in plain language (English or Swahili).
+
+### 3. Edge-Based Computer Vision (TensorFlow.js)
+**The Technology**: We use **TensorFlow.js** to run deep learning models (MobileNet architecture) directly in the user's web browser, without needing to send images to a central server for processing.
+
+**How We Use It**:
+- **Client-Side Classification**: When a user uploads a leaf image, the neural network analyzes the pixel data locally on the device (smartphone or laptop) to identify plant species and detect disease patterns.
+
+**Benefit to the Farmer**:
+- **Offline Capability**: Farming often happens in remote areas with poor internet connectivity. Because the model runs on the device, farmers can diagnose crop diseases even when they are completely offline in the middle of a field.
+- **Data Privacy**: Images of proprietary crop strains or field conditions do not leave the farmer's device unless they explicitly choose to save them to the cloud history.
+- **Instant Results**: Identification happens in milliseconds, allowing for immediate decision-making.
+
+### 4. Geospatial Visualization (Leaflet & OpenStreetMap)
+**The Technology**: The frontend mapping interface is built on **Leaflet.js**, utilizing tile layers from **OpenStreetMap (OSM)** and satellite imagery.
+
+**How We Use It**:
+- **Polygon Layering**: Users can draw interactive polygons to define field boundaries. These polygons serve as containers for data—we attach attributes like crop type, planting date, and soil health to these specific geographic shapes.
+- **Visual Overlays**: We render data layers (like NDVI health scores or moisture levels) directly on top of the terrain map.
+
+**Benefit to the Farmer**:
+- **Visual Management**: Provides a "God's eye view" of the entire operation. A farmer can see at a glance that "The North Field" is healthy (green polygon) while "The River Field" is stressed (yellow polygon).
+- **Precision Inputs**: By accurately defining field areas, farmers can calculate exact input needs (fertilizer, seeds) based on acreage, preventing waste and over-purchasing.
+
+---
+
+## Technical Architecture Overview
+
+AgriVision is built on a modern, scalable stack designed for performance and reliability.
+
+```mermaid
+graph TD
+    UI[User Interface<br/>Next.js 15, React 19, Framer Motion]
+    
+    %% Client Side Integration
+    UI --> Leaflet[Leaflet Map<br/>View Layer]
+    UI --> GH[GraphHopper<br/>Routing Logic]
+    UI --> Groq[GROQ AI<br/>Inference Engine]
+    UI --> TF[TensorFlow JS<br/>Computer Vision]
+
+    %% Data Flow
+    Leaflet -.-> BE[Backend API<br/>Next.js Routes, Prisma]
+    GH -.-> BE
+    Groq -.-> BE
+    TF -.-> BE
+
+    %% Persistence
+    BE --> DB[(Database<br/>MongoDB)]
+
+    style UI fill:#e1f5fe,stroke:#01579b,stroke-width:2px
+    style BE fill:#fff3e0,stroke:#e65100,stroke-width:2px
+    style DB fill:#e8f5e9,stroke:#1b5e20,stroke-width:2px
+```
+
+![History Log](/Screenshots/history-log.png)
+
+---
+
+## Getting Started
+
+Follow these instructions to set up the development environment on your local machine.
+
+### Prerequisites
+- Git
+- Node.js 18 or higher
+- MongoDB instance (Local or Atlas)
+- API Keys for: GraphHopper, Groq
+
+### Installation Steps
+
+1. **Clone the repository**
+   Open your terminal and run the following command to download the codebase:
+   ```bash
+   git clone https://github.com/Khin-96/Agrivision.git
+   ```
+
+2. **Navigate into the project directory**
+   ```bash
+   cd agrivision
+   ```
+
+3. **Install dependencies**
+   ```bash
+   npm install
+   ```
+
+4. **Configure Environment Variables**
+   Create a `.env` file in the root directory of the project. You can copy the example below:
+   ```env
+   # Database Connection
+   DATABASE_URL="mongodb+srv://..."
+   
+   # AI Services (Groq for Chatbot)
+   GROQ_API_KEY="gsk_..."
+   
+   # Mapping Services (GraphHopper)
+   NEXT_PUBLIC_GRAPHHOPPER_API_KEY="your_key"
+   GRAPHHOPPER_API_KEY="your_key"
+   
+   # Authentication
+   NEXTAUTH_SECRET="your_secret_string"
+   NEXTAUTH_URL="http://localhost:3000"
+   ```
+
+5. **Initialize Database**
+   This command enables Prisma to read your schema and prepare the database client:
+   ```bash
+   npx prisma generate
+   ```
+
+6. **Run Development Server**
+   Start the local development server:
+   ```bash
+   npm run dev
+   ```
+
+   Visit `http://localhost:3000` in your browser to view the application.
+
+---
+
+## Documentation Library
+For specific implementation details, please refer to our internal guides:
+- **[Installation Guide](./QUICK_START.md)**
+- **[Mapping System Guide](./GRAPHHOPPER_GUIDE.md)**
+- **[Technical Architecture](./IMPLEMENTATION_SUMMARY.md)**
+- **[Advanced Features](./ADVANCED_FEATURES.md)**
+
+---
+
+**AgriVision** - Empowering farmers with the eyes of AI.

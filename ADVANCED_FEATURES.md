@@ -117,7 +117,7 @@ routes.forEach((route, index) => {
 - Best for understanding landscape
 
 **How to use:**
-1. Click the layers icon (📚) in top-left controls
+1. Click the layers icon in top-left controls
 2. Select desired layer:
    - Street
    - Satellite
@@ -134,7 +134,7 @@ Map tiles are automatically cached by the browser for offline use.
 
 **How to use:**
 1. Calculate a route to a farm
-2. In the route panel, click the speaker icon (🔊)
+2. In the route panel, click the speaker icon
 3. Voice navigation is now enabled
 4. Instructions are spoken automatically as you travel
 
@@ -499,14 +499,14 @@ useEffect(() => {
 ## Changelog
 
 ### Version 2.0 (Current)
-- ✅ Added isochrone mapping
-- ✅ Added alternative routes
-- ✅ Added voice navigation
-- ✅ Added route sharing
-- ✅ Added GPX export
-- ✅ Added custom map layers
-- ✅ Added vehicle type selection
-- ✅ Improved performance
+- Added isochrone mapping
+- Added alternative routes
+- Added voice navigation
+- Added route sharing
+- Added GPX export
+- Added custom map layers
+- Added vehicle type selection
+- Improved performance
 
 ### Version 1.0
 - Initial GraphHopper integration

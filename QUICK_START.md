@@ -118,26 +118,26 @@ The route panel shows:
 ## Features Overview
 
 ### Map Features
-- ✅ Interactive map with zoom/pan
-- ✅ Draw farm field boundaries
-- ✅ Color-coded field health
-- ✅ Click fields for details
-- ✅ User location marker
+- [x] Interactive map with zoom/pan
+- [x] Draw farm field boundaries
+- [x] Color-coded field health
+- [x] Click fields for details
+- [x] User location marker
 
 ### Routing Features
-- ✅ Turn-by-turn navigation
-- ✅ Distance calculation
-- ✅ Time estimation
-- ✅ Visual route display
-- ✅ Multiple vehicle types
+- [x] Turn-by-turn navigation
+- [x] Distance calculation
+- [x] Time estimation
+- [x] Visual route display
+- [x] Multiple vehicle types
 
 ### AI Features
-- ✅ Location information
-- ✅ Direction guidance
-- ✅ Farm analysis
-- ✅ Crop recommendations
-- ✅ Weather information
-- ✅ Swahili support
+- [x] Location information
+- [x] Direction guidance
+- [x] Farm analysis
+- [x] Crop recommendations
+- [x] Weather information
+- [x] Swahili support
 
 ## Example Conversations
 
