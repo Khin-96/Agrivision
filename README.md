@@ -2,7 +2,7 @@
 
 AgriVision is a comprehensive precision agriculture platform designed to bridge the gap between advanced technology and practical farming. By integrating computer vision, geospatial analysis, and generative AI, AgriVision empowers farmers to make data-driven decisions that increase yield, reduce waste, and ensure crop health.
 
-![AgriVision Dashboard](/Screenshots/hero-dashboard.png)
+![AgriVision Dashboard](public/Screenshots/hero-dashboard.png)
 
 ---
 
@@ -56,7 +56,7 @@ We have carefully selected cutting-edge technologies to solve specific agricultu
 - **Data Privacy**: Images of proprietary crop strains or field conditions do not leave the farmer's device unless they explicitly choose to save them to the cloud history.
 - **Instant Results**: Identification happens in milliseconds, allowing for immediate decision-making.
 
-![Disease Analysis](/Screenshots/upload.png)
+![Disease Analysis](public/Screenshots/upload.png)
 
 ### 4. Geospatial Visualization (Leaflet & OpenStreetMap)
 **The Technology**: The frontend mapping interface is built on **Leaflet.js**, utilizing tile layers from **OpenStreetMap (OSM)** and satellite imagery.
@@ -69,7 +69,7 @@ We have carefully selected cutting-edge technologies to solve specific agricultu
 - **Visual Management**: Provides a "God's eye view" of the entire operation. A farmer can see at a glance that "The North Field" is healthy (green polygon) while "The River Field" is stressed (yellow polygon).
 - **Precision Inputs**: By accurately defining field areas, farmers can calculate exact input needs (fertilizer, seeds) based on acreage, preventing waste and over-purchasing.
 
-![Mapping Interface](/Screenshots/mapping-interface.png)
+![Mapping Interface](public/Screenshots/mapping-interface.png)
 
 ### 5. Digital Marketplace (E-Commerce)
 **The Technology**: A full-stack marketplace built with Next.js, integrating MongoDB for inventory management and robust search algorithms.
@@ -83,7 +83,7 @@ We have carefully selected cutting-edge technologies to solve specific agricultu
 - **Market Access**: Gives smallholder farmers a digital storefront to reach a wider audience beyond their local community.
 - **Reduced Post-Harvest Loss**: Faster connections to buyers mean fresh produce moves quickly, reducing spoilage.
 
-![Marketplace Hub](/Screenshots/marketplay.png)
+![Marketplace Hub](public/Screenshots/marketplay.png)
 
 ---
 
@@ -115,7 +115,7 @@ graph TD
     style DB fill:#e8f5e9,stroke:#1b5e20,stroke-width:2px
 ```
 
-![History Log](/Screenshots/history-log.png)
+![History Log](public/Screenshots/history-log.png)
 
 ---
 
