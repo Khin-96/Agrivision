@@ -1,417 +1,328 @@
 'use client';
 
 import React, { useEffect, useRef, useState } from 'react';
-import { 
-  Room, 
-  VideoPresets, 
-  createLocalVideoTrack, 
-  createLocalAudioTrack,
-  Track,
-  RemoteParticipant,
-  RemoteTrack,
-  RemoteTrackPublication
-} from 'livekit-client';
 import { ArrowLeft, Camera, CameraOff, Mic, MicOff, Bot, Eye } from 'lucide-react';
+import { GeminiWebSocket } from '../../services/geminiWebSocket';
+import { Base64 } from 'js-base64';
 
 interface LiveVisionProps {
   onClose?: () => void;
 }
 
-interface ConnectionDetails {
-  serverUrl: string;
-  roomName: string;
-  participantName: string;
-  participantToken: string;
-}
-
 export default function LiveVision({ onClose }: LiveVisionProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const audioRef = useRef<HTMLAudioElement>(null);
-  const roomRef = useRef<Room | null>(null);
-  const [localVideoTrack, setLocalVideoTrack] = useState<MediaStreamTrack | null>(null);
-  const [localAudioTrack, setLocalAudioTrack] = useState<MediaStreamTrack | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const audioWorkletNodeRef = useRef<AudioWorkletNode | null>(null);
+  const geminiWsRef = useRef<GeminiWebSocket | null>(null);
+  const videoCanvasRef = useRef<HTMLCanvasElement>(null);
+  const imageIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  const [stream, setStream] = useState<MediaStream | null>(null);
   const [isStreaming, setIsStreaming] = useState(false);
   const [isCameraOn, setIsCameraOn] = useState(true);
   const [isMicOn, setIsMicOn] = useState(true);
   const [isConnecting, setIsConnecting] = useState(false);
   const [showControls, setShowControls] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [remoteParticipants, setRemoteParticipants] = useState<RemoteParticipant[]>([]);
   const [agentConnected, setAgentConnected] = useState(false);
-  const [connectionDetails, setConnectionDetails] = useState<ConnectionDetails | null>(null);
-  const [videoStreamActive, setVideoStreamActive] = useState(false);
+  const [isAudioSetup, setIsAudioSetup] = useState(false);
+  const [isWebSocketReady, setIsWebSocketReady] = useState(false);
+  const [isModelSpeaking, setIsModelSpeaking] = useState(false);
+  const [audioLevel, setAudioLevel] = useState(0);
+  const [outputAudioLevel, setOutputAudioLevel] = useState(0);
+  const setupInProgressRef = useRef(false);
 
-  // Fetch connection details from API
-  const fetchConnectionDetails = async (): Promise<ConnectionDetails> => {
-    try {
-      console.log('Fetching connection details from API...');
-      const response = await fetch('/api/connection-details', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({}),
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const data = await response.json();
-      console.log('Connection details received:', data);
-      return data;
-    } catch (err) {
-      console.error('Failed to fetch connection details:', err);
-      throw new Error(`Failed to get connection details: ${err instanceof Error ? err.message : 'Unknown error'}`);
+  // Cleanup functions
+  const cleanupAudio = () => {
+    if (audioWorkletNodeRef.current) {
+      audioWorkletNodeRef.current.disconnect();
+      audioWorkletNodeRef.current = null;
     }
+    if (audioContextRef.current) {
+      audioContextRef.current.close();
+      audioContextRef.current = null;
+    }
+    setIsAudioSetup(false);
   };
 
-  // Start camera preview
+  const cleanupWebSocket = () => {
+    if (geminiWsRef.current) {
+      geminiWsRef.current.disconnect();
+      geminiWsRef.current = null;
+    }
+    setIsWebSocketReady(false);
+    setAgentConnected(false);
+  };
+
+  // Send audio data to Gemini
+  const sendAudioData = (b64Data: string) => {
+    if (!geminiWsRef.current) return;
+    geminiWsRef.current.sendMediaChunk(b64Data, "audio/pcm");
+  };
+
+  // Capture and send image
+  const captureAndSendImage = () => {
+    if (!videoRef.current || !videoCanvasRef.current || !geminiWsRef.current) return;
+
+    const canvas = videoCanvasRef.current;
+    const context = canvas.getContext('2d');
+    if (!context) return;
+
+    canvas.width = videoRef.current.videoWidth;
+    canvas.height = videoRef.current.videoHeight;
+
+    context.drawImage(videoRef.current, 0, 0);
+
+    const imageData = canvas.toDataURL('image/jpeg', 0.8);
+    const b64Data = imageData.split(',')[1];
+    geminiWsRef.current.sendMediaChunk(b64Data, "image/jpeg");
+  };
+
+  // Start camera
   const startCamera = async () => {
     try {
       setError(null);
-      
-      // Create video track with explicit camera facing
-      const videoTrack = await createLocalVideoTrack({ 
-        resolution: VideoPresets.h720,
-        facingMode: 'user'
-      });
-      setLocalVideoTrack(videoTrack.mediaStreamTrack);
 
-      // Create audio track
-      const audioTrack = await createLocalAudioTrack();
-      setLocalAudioTrack(audioTrack.mediaStreamTrack);
-
-      // Attach video to preview
-      if (videoRef.current) {
-        videoTrack.attach(videoRef.current);
-      }
-
-      console.log('✅ Camera and microphone initialized');
-
-    } catch (err) {
-      console.error('Error accessing camera:', err);
-      setError('Failed to access camera and microphone. Please check permissions.');
-    }
-  };
-
-  // Handle remote track subscriptions
-  const handleTrackSubscribed = (
-    track: RemoteTrack,
-    publication: RemoteTrackPublication,
-    participant: RemoteParticipant
-  ) => {
-    console.log('Track subscribed:', {
-      kind: track.kind,
-      sid: track.sid,
-      source: publication.source,
-      participant: participant.identity,
-      name: participant.name
-    });
-    
-    if (track.kind === Track.Kind.Audio) {
-      // This is the AI's audio track
-      if (audioRef.current) {
-        track.attach(audioRef.current);
-        console.log('✅ AI audio track attached');
-        
-        // Force play
-        audioRef.current.play().catch(e => {
-          console.log('Auto-play prevented, user interaction needed:', e);
-        });
-      }
-      
-      // Check if this is an agent
-      if (participant.identity.includes('agent') || 
-          participant.name?.includes('agent') || 
-          participant.identity.includes('Assistant')) {
-        setAgentConnected(true);
-        console.log('🤖 AI Agent audio connected');
-      }
-    }
-  };
-
-  const handleTrackUnsubscribed = (
-    track: RemoteTrack,
-    publication: RemoteTrackPublication,
-    participant: RemoteParticipant
-  ) => {
-    console.log('Track unsubscribed:', track.kind, track.sid);
-    
-    if (track.kind === Track.Kind.Audio && audioRef.current) {
-      track.detach(audioRef.current);
-    }
-  };
-
-  const handleParticipantConnected = (participant: RemoteParticipant) => {
-    console.log('Participant connected:', {
-      identity: participant.identity,
-      name: participant.name,
-      metadata: participant.metadata
-    });
-    setRemoteParticipants(prev => [...prev, participant]);
-
-    // Check if this is an agent
-    if (participant.identity.includes('agent') || 
-        participant.name?.includes('agent') || 
-        participant.identity.includes('Assistant')) {
-      setAgentConnected(true);
-      console.log('🤖 AI Agent detected');
-    }
-
-    // Handle existing tracks
-    const trackPublications = participant.getTrackPublications();
-    console.log('Available track publications:', trackPublications.map(t => ({
-      trackSid: t.trackSid,
-      kind: t.kind,
-      source: t.source,
-      track: t.track ? 'has track' : 'no track'
-    })));
-
-    // Subscribe to audio tracks
-    trackPublications.forEach(publication => {
-      if (publication.kind === Track.Kind.Audio && publication.track) {
-        if (audioRef.current) {
-          publication.track.attach(audioRef.current);
-          audioRef.current.play().catch(e => {
-            console.log('Auto-play prevented for initial track:', e);
-          });
-        }
-      }
-    });
-
-    // Listen for future track publications
-    participant.on('trackPublished', (publication: RemoteTrackPublication) => {
-      console.log('Track published later:', {
-        trackSid: publication.trackSid,
-        kind: publication.kind,
-        source: publication.source
-      });
-      if (publication.kind === Track.Kind.Audio && publication.track && audioRef.current) {
-        publication.track.attach(audioRef.current);
-        audioRef.current.play().catch(e => {
-          console.log('Auto-play prevented for later track:', e);
-        });
-      }
-    });
-  };
-
-  const handleParticipantDisconnected = (participant: RemoteParticipant) => {
-    console.log('Participant disconnected:', participant.identity);
-    setRemoteParticipants(prev => prev.filter(p => p !== participant));
-    
-    if (participant.identity.includes('agent') || 
-        participant.name?.includes('agent') || 
-        participant.identity.includes('Assistant')) {
-      setAgentConnected(false);
-    }
-  };
-
-  // LiveKit connect with CRITICAL FIX
-  const connectLiveKit = async (livekitUrl: string, accessToken: string, roomName: string) => {
-    if (!livekitUrl || !accessToken) {
-      setError('Missing LiveKit URL or access token');
-      return;
-    }
-
-    if (!localVideoTrack || !localAudioTrack) {
-      setError('Camera not initialized');
-      return;
-    }
-
-    try {
-      setIsConnecting(true);
-      setError(null);
-      setAgentConnected(false);
-      setVideoStreamActive(false);
-
-      console.log('Connecting to LiveKit:', { livekitUrl, roomName });
-
-      const room = new Room({ 
-        adaptiveStream: true,
-        videoCaptureDefaults: {
-          resolution: VideoPresets.h720,
+      const videoStream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: 'user',
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
         },
+        audio: false
       });
 
-      // Set up room event listeners
-      room
-        .on('disconnected', () => {
-          console.log('Disconnected from room');
-          setIsStreaming(false);
-          setRemoteParticipants([]);
-          setAgentConnected(false);
-          setVideoStreamActive(false);
-        })
-        .on('participantConnected', handleParticipantConnected)
-        .on('participantDisconnected', handleParticipantDisconnected)
-        .on('trackSubscribed', handleTrackSubscribed)
-        .on('trackUnsubscribed', handleTrackUnsubscribed)
-        .on('localTrackPublished', (publication) => {
-          console.log('Local track published:', {
-            trackSid: publication.trackSid,
-            kind: publication.kind,
-            source: publication.source
-          });
-          if (publication.kind === Track.Kind.Video) {
-            setVideoStreamActive(true);
-            console.log('📹 Video stream now active!');
-          }
-        })
-        .on('trackPublished', (publication, participant) => {
-          console.log('Remote track published:', {
-            trackSid: publication.trackSid,
-            kind: publication.kind,
-            participant: participant.identity
-          });
-        })
-        .on('connected', () => {
-          console.log('✅ Successfully connected to room');
-          console.log('Room participants:', Array.from(room.remoteParticipants.values()).map(p => ({
-            identity: p.identity,
-            name: p.name,
-            metadata: p.metadata,
-            tracks: p.getTrackPublications().map(t => ({
-              sid: t.trackSid,
-              kind: t.kind,
-              source: t.source
-            }))
-          })));
-        });
-
-      // Connect to room with auto-subscribe enabled
-      await room.connect(livekitUrl, accessToken, {
-        autoSubscribe: true,
+      const audioStream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          sampleRate: 16000,
+          channelCount: 1,
+          echoCancellation: true,
+          autoGainControl: true,
+          noiseSuppression: true,
+        }
       });
 
-      roomRef.current = room;
-
-      // 🔴 CRITICAL FIX: Create and publish tracks with EXPLICIT SOURCE
-      console.log('📹 Publishing video track with Camera source...');
-      const videoTrack = await createLocalVideoTrack({ 
-        resolution: VideoPresets.h720,
-        facingMode: 'user'
+      audioContextRef.current = new AudioContext({
+        sampleRate: 16000,
       });
-      
-      // THIS IS THE KEY FIX - specify Track.Source.Camera
-      await room.localParticipant.publishTrack(videoTrack, {
-        source: Track.Source.Camera,
-        name: 'camera'
-      });
-      console.log('✅ Video track published with Camera source');
 
-      console.log('🎤 Publishing audio track...');
-      const audioTrack = await createLocalAudioTrack();
-      await room.localParticipant.publishTrack(audioTrack, {
-        source: Track.Source.Microphone,
-        name: 'microphone'
-      });
-      console.log('✅ Audio track published');
-
-      console.log('📊 Local participant tracks:', 
-        Array.from(room.localParticipant.trackPublications.values()).map(p => ({
-          sid: p.trackSid,
-          kind: p.kind,
-          source: p.source
-        }))
-      );
-
-      // Check for existing remote participants
-      if (room.remoteParticipants.size > 0) {
-        console.log('Found existing remote participants:', room.remoteParticipants.size);
-        room.remoteParticipants.forEach(participant => {
-          handleParticipantConnected(participant);
-        });
+      if (videoRef.current) {
+        videoRef.current.srcObject = videoStream;
+        videoRef.current.muted = true;
       }
 
-      setIsStreaming(true);
-      setIsConnecting(false);
+      const combinedStream = new MediaStream([
+        ...videoStream.getTracks(),
+        ...audioStream.getTracks()
+      ]);
 
-      // Set timeout to warn if no agent connects
-      setTimeout(() => {
-        if (!agentConnected && room.remoteParticipants.size === 0) {
-          setError('No AI agent detected. Please check if your agent is running with the correct agent_name="Assistant"');
-          console.log('⚠️ No agent detected. Available participants:', 
-            Array.from(room.remoteParticipants.values()).map(p => p.identity)
-          );
-        }
-      }, 10000);
+      setStream(combinedStream);
+      console.log('Camera and microphone initialized');
 
     } catch (err) {
-      console.error('Failed to connect to LiveKit:', err);
-      setError(`Failed to connect: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      console.error('Error accessing media devices:', err);
+      setError('Failed to access camera and microphone. Please check permissions.');
+      cleanupAudio();
+    }
+  };
+
+  // Initialize WebSocket connection
+  useEffect(() => {
+    if (!isStreaming) {
       setIsConnecting(false);
-    }
-  };
-
-  const stopStreaming = async () => {
-    if (roomRef.current) {
-      await roomRef.current.disconnect();
-      roomRef.current = null;
+      return;
     }
 
-    if (localVideoTrack) {
-      localVideoTrack.stop();
-    }
+    setIsConnecting(true);
+    geminiWsRef.current = new GeminiWebSocket(
+      (text) => {
+        console.log("Received from Gemini:", text);
+      },
+      () => {
+        console.log("[Camera] WebSocket setup complete, starting media capture");
+        setIsWebSocketReady(true);
+        setAgentConnected(true);
+        setIsConnecting(false);
+      },
+      (isPlaying) => {
+        setIsModelSpeaking(isPlaying);
+      },
+      (level) => {
+        setOutputAudioLevel(level);
+      },
+      (transcription) => {
+        console.log("[Transcription]:", transcription);
+      }
+    );
+    geminiWsRef.current.connect();
 
-    if (localAudioTrack) {
-      localAudioTrack.stop();
-    }
+    return () => {
+      if (imageIntervalRef.current) {
+        clearInterval(imageIntervalRef.current);
+        imageIntervalRef.current = null;
+      }
+      cleanupWebSocket();
+    };
+  }, [isStreaming]);
 
-    setLocalVideoTrack(null);
-    setLocalAudioTrack(null);
-    setIsStreaming(false);
-    setIsCameraOn(false);
-    setIsMicOn(false);
-    setRemoteParticipants([]);
-    setAgentConnected(false);
-    setConnectionDetails(null);
-    setVideoStreamActive(false);
-  };
+  // Start image capture only after WebSocket is ready
+  useEffect(() => {
+    if (!isStreaming || !isWebSocketReady) return;
+
+    console.log("[Camera] Starting image capture interval");
+    imageIntervalRef.current = setInterval(captureAndSendImage, 1000);
+
+    return () => {
+      if (imageIntervalRef.current) {
+        clearInterval(imageIntervalRef.current);
+        imageIntervalRef.current = null;
+      }
+    };
+  }, [isStreaming, isWebSocketReady]);
+
+  // Update audio processing setup
+  useEffect(() => {
+    if (!isStreaming || !stream || !audioContextRef.current ||
+      !isWebSocketReady || isAudioSetup || setupInProgressRef.current) return;
+
+    let isActive = true;
+    setupInProgressRef.current = true;
+
+    const setupAudioProcessing = async () => {
+      try {
+        const ctx = audioContextRef.current;
+        if (!ctx || ctx.state === 'closed' || !isActive) {
+          setupInProgressRef.current = false;
+          return;
+        }
+
+        if (ctx.state === 'suspended') {
+          await ctx.resume();
+        }
+
+        await ctx.audioWorklet.addModule('/worklets/audio-processor.js');
+
+        if (!isActive) {
+          setupInProgressRef.current = false;
+          return;
+        }
+
+        audioWorkletNodeRef.current = new AudioWorkletNode(ctx, 'audio-processor', {
+          numberOfInputs: 1,
+          numberOfOutputs: 1,
+          processorOptions: {
+            sampleRate: 16000,
+            bufferSize: 4096,
+          },
+          channelCount: 1,
+          channelCountMode: 'explicit',
+          channelInterpretation: 'speakers'
+        });
+
+        const source = ctx.createMediaStreamSource(stream);
+        audioWorkletNodeRef.current.port.onmessage = (event) => {
+          if (!isActive || isModelSpeaking) return;
+          const { pcmData, level } = event.data;
+          setAudioLevel(level);
+
+          const pcmArray = new Uint8Array(pcmData);
+          const b64Data = Base64.fromUint8Array(pcmArray);
+          sendAudioData(b64Data);
+        };
+
+        source.connect(audioWorkletNodeRef.current);
+        setIsAudioSetup(true);
+        setupInProgressRef.current = false;
+
+        return () => {
+          source.disconnect();
+          if (audioWorkletNodeRef.current) {
+            audioWorkletNodeRef.current.disconnect();
+          }
+          setIsAudioSetup(false);
+        };
+      } catch (error) {
+        if (isActive) {
+          cleanupAudio();
+          setIsAudioSetup(false);
+        }
+        setupInProgressRef.current = false;
+      }
+    };
+
+    console.log("[Camera] Starting audio processing setup");
+    setupAudioProcessing();
+
+    return () => {
+      isActive = false;
+      setIsAudioSetup(false);
+      setupInProgressRef.current = false;
+      if (audioWorkletNodeRef.current) {
+        audioWorkletNodeRef.current.disconnect();
+        audioWorkletNodeRef.current = null;
+      }
+    };
+  }, [isStreaming, stream, isWebSocketReady, isModelSpeaking]);
 
   const toggleCamera = async () => {
-    if (localVideoTrack) {
-      localVideoTrack.enabled = !localVideoTrack.enabled;
-      setIsCameraOn(!isCameraOn);
+    if (stream) {
+      const videoTrack = stream.getVideoTracks()[0];
+      if (videoTrack) {
+        videoTrack.enabled = !isCameraOn;
+        setIsCameraOn(!isCameraOn);
+      }
     }
   };
 
   const toggleMicrophone = async () => {
-    if (localAudioTrack) {
-      localAudioTrack.enabled = !localAudioTrack.enabled;
-      setIsMicOn(!isMicOn);
+    if (stream) {
+      const audioTrack = stream.getAudioTracks()[0];
+      if (audioTrack) {
+        audioTrack.enabled = !isMicOn;
+        setIsMicOn(!isMicOn);
+      }
     }
   };
 
   const startStreaming = async () => {
     try {
-      if (!localVideoTrack || !localAudioTrack) {
+      if (!stream) {
         await startCamera();
       }
-      
-      const details = await fetchConnectionDetails();
-      setConnectionDetails(details);
-      
-      await connectLiveKit(details.serverUrl, details.participantToken, details.roomName);
+      setIsStreaming(true);
     } catch (err) {
       console.error('Failed to start streaming:', err);
       setError(`Failed to start streaming: ${err instanceof Error ? err.message : 'Unknown error'}`);
     }
   };
 
+  const stopStreaming = async () => {
+    if (imageIntervalRef.current) {
+      clearInterval(imageIntervalRef.current);
+      imageIntervalRef.current = null;
+    }
+
+    cleanupWebSocket();
+    cleanupAudio();
+
+    if (stream) {
+      stream.getTracks().forEach(track => track.stop());
+      setStream(null);
+    }
+
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+
+    setIsStreaming(false);
+    setIsCameraOn(false);
+    setIsMicOn(false);
+    setAgentConnected(false);
+  };
+
   const handleBack = () => {
     stopStreaming();
     if (onClose) onClose();
-  };
-
-  const playAudioManually = () => {
-    if (audioRef.current) {
-      audioRef.current.play().then(() => {
-        console.log('Audio playback started manually');
-      }).catch(e => {
-        console.log('Manual audio play failed:', e);
-      });
-    }
   };
 
   // Hide controls after 3s
@@ -420,15 +331,6 @@ export default function LiveVision({ onClose }: LiveVisionProps) {
     const timer = setTimeout(() => setShowControls(false), 3000);
     return () => clearTimeout(timer);
   }, [showControls]);
-
-  // Update video element when local video track changes
-  useEffect(() => {
-    if (videoRef.current && localVideoTrack) {
-      const stream = new MediaStream([localVideoTrack]);
-      videoRef.current.srcObject = stream;
-      videoRef.current.play().catch((e) => console.log('Video play failed:', e));
-    }
-  }, [localVideoTrack]);
 
   // Initialize camera on mount
   useEffect(() => {
@@ -440,16 +342,6 @@ export default function LiveVision({ onClose }: LiveVisionProps) {
 
   return (
     <div className="fixed inset-0 bg-black z-50 flex flex-col" onClick={() => setShowControls(true)}>
-      {/* Hidden audio element for AI audio */}
-      <audio 
-        ref={audioRef} 
-        autoPlay 
-        className="hidden"
-        onCanPlay={() => console.log('AI audio can play')}
-        onPlay={() => console.log('AI audio started playing')}
-        onError={(e) => console.error('AI audio error:', e)}
-      />
-
       {/* Fullscreen video */}
       <video
         ref={videoRef}
@@ -460,12 +352,15 @@ export default function LiveVision({ onClose }: LiveVisionProps) {
         style={{ transform: 'scaleX(-1)' }}
       />
 
+      {/* Hidden canvas for image capture */}
+      <canvas ref={videoCanvasRef} className="hidden" />
+
       {/* Error message */}
       {error && (
         <div className="absolute top-20 left-1/2 transform -translate-x-1/2 z-30 bg-red-500 text-white px-4 py-2 rounded-lg max-w-md text-center">
           {error}
           <br />
-          <button 
+          <button
             onClick={() => setError(null)}
             className="mt-2 bg-white text-red-500 px-3 py-1 rounded text-sm"
           >
@@ -483,21 +378,11 @@ export default function LiveVision({ onClose }: LiveVisionProps) {
               {agentConnected ? 'AI Agent Connected' : 'Waiting for AI Agent...'}
             </span>
           </div>
-          {videoStreamActive && (
+          {agentConnected && (
             <div className="flex items-center space-x-2 mt-1 text-green-400">
               <Eye size={14} />
               <span className="text-xs">Agent can see you</span>
             </div>
-          )}
-          {connectionDetails?.roomName && <div className="text-xs mt-1">Room: {connectionDetails.roomName}</div>}
-          <div className="text-xs mt-1">Participants: {remoteParticipants.length + 1}</div>
-          {!agentConnected && (
-            <button 
-              onClick={playAudioManually}
-              className="mt-2 bg-blue-500 hover:bg-blue-600 px-2 py-1 rounded text-xs w-full"
-            >
-              Enable Audio
-            </button>
           )}
         </div>
       )}
@@ -520,7 +405,7 @@ export default function LiveVision({ onClose }: LiveVisionProps) {
                 <span>AI Listening</span>
               </div>
             )}
-            {videoStreamActive && (
+            {agentConnected && (
               <div className="flex items-center space-x-2 bg-blue-500/80 px-3 py-1 rounded-full text-white text-sm">
                 <Eye size={16} />
                 <span>AI Watching</span>
@@ -543,20 +428,18 @@ export default function LiveVision({ onClose }: LiveVisionProps) {
           <div className="flex items-center space-x-3 bg-black/50 rounded-full p-2 backdrop-blur-sm">
             <button
               onClick={toggleCamera}
-              disabled={!localVideoTrack || isConnecting}
-              className={`p-3 rounded-full transition-colors ${
-                isCameraOn ? 'bg-white/20 hover:bg-white/30' : 'bg-red-500/80 hover:bg-red-600/80'
-              } text-white disabled:opacity-50`}
+              disabled={!stream || isConnecting}
+              className={`p-3 rounded-full transition-colors ${isCameraOn ? 'bg-white/20 hover:bg-white/30' : 'bg-red-500/80 hover:bg-red-600/80'
+                } text-white disabled:opacity-50`}
             >
               {isCameraOn ? <Camera size={20} /> : <CameraOff size={20} />}
             </button>
 
             <button
               onClick={toggleMicrophone}
-              disabled={!localAudioTrack || isConnecting}
-              className={`p-3 rounded-full transition-colors ${
-                isMicOn ? 'bg-white/20 hover:bg-white/30' : 'bg-red-500/80 hover:bg-red-600/80'
-              } text-white disabled:opacity-50`}
+              disabled={!stream || isConnecting}
+              className={`p-3 rounded-full transition-colors ${isMicOn ? 'bg-white/20 hover:bg-white/30' : 'bg-red-500/80 hover:bg-red-600/80'
+                } text-white disabled:opacity-50`}
             >
               {isMicOn ? <Mic size={20} /> : <MicOff size={20} />}
             </button>
@@ -567,7 +450,7 @@ export default function LiveVision({ onClose }: LiveVisionProps) {
             {!isStreaming ? (
               <button
                 onClick={startStreaming}
-                disabled={!localVideoTrack || !localAudioTrack || isConnecting}
+                disabled={!stream || isConnecting}
                 className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-full font-medium text-lg disabled:opacity-50 transition-colors"
               >
                 {isConnecting ? 'Connecting...' : 'Go Live'}
@@ -589,9 +472,22 @@ export default function LiveVision({ onClose }: LiveVisionProps) {
         <div className="absolute inset-0 bg-black/50 flex items-center justify-center z-10">
           <div className="text-center text-white">
             <div className="w-10 h-10 border-4 border-white border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
-            <p>Connecting to LiveKit...</p>
-            <p className="text-sm mt-2">Waiting for AI agent to join</p>
+            <p>Connecting to Gemini AI...</p>
+            <p className="text-sm mt-2">Establishing secure connection</p>
           </div>
+        </div>
+      )}
+
+      {/* Audio level indicator */}
+      {isStreaming && (
+        <div className="absolute bottom-4 left-4 w-64 h-2 rounded-full bg-green-100 z-20">
+          <div
+            className="h-full rounded-full transition-all bg-green-500"
+            style={{
+              width: `${isModelSpeaking ? outputAudioLevel : audioLevel}%`,
+              transition: 'width 100ms ease-out'
+            }}
+          />
         </div>
       )}
     </div>

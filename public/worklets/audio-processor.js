@@ -20,7 +20,7 @@ class AudioProcessor extends AudioWorkletProcessor {
     if (this.sampleCount >= this.bufferSize) {
       const pcm16 = new Int16Array(this.bufferSize);
       let sum = 0;
-      
+
       // Simple conversion like in the original implementation
       for (let i = 0; i < this.bufferSize; i++) {
         // Scale to 16-bit range directly

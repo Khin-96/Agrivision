@@ -1,9 +1,20 @@
-// src/app/services/geminiWebSocket.ts
 import { Base64 } from 'js-base64';
+import { TranscriptionService } from './transcriptionService';
+import { pcmToWav } from '../utils/audioUtils';
 
-const MODEL = "models/gemini-2.0-flash-exp";
+const MODEL = "models/gemini-2.5-flash-native-audio-preview-12-2025";
 const API_KEY = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
 const HOST = "generativelanguage.googleapis.com";
+
+// Debug logging
+console.log("[WebSocket] API_KEY available:", !!API_KEY);
+console.log("[WebSocket] API_KEY length:", API_KEY?.length || 0);
+
+if (!API_KEY) {
+  console.error("[WebSocket] CRITICAL: NEXT_PUBLIC_GEMINI_API_KEY is not defined!");
+  console.error("[WebSocket] Please restart your dev server after setting environment variables");
+}
+
 const WS_URL = `wss://${HOST}/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContent?key=${API_KEY}`;
 
 export class GeminiWebSocket {
@@ -13,17 +24,20 @@ export class GeminiWebSocket {
   private onMessageCallback: ((text: string) => void) | null = null;
   private onSetupCompleteCallback: (() => void) | null = null;
   private audioContext: AudioContext | null = null;
-  
+
   // Audio queue management
   private audioQueue: Float32Array[] = [];
   private isPlaying: boolean = false;
   private currentSource: AudioBufferSourceNode | null = null;
+  private isPlayingResponse: boolean = false;
   private onPlayingStateChange: ((isPlaying: boolean) => void) | null = null;
   private onAudioLevelChange: ((level: number) => void) | null = null;
   private onTranscriptionCallback: ((text: string) => void) | null = null;
+  private transcriptionService: TranscriptionService;
+  private accumulatedPcmData: string[] = [];
 
   constructor(
-    onMessage: (text: string) => void, 
+    onMessage: (text: string) => void,
     onSetupComplete: () => void,
     onPlayingStateChange: (isPlaying: boolean) => void,
     onAudioLevelChange: (level: number) => void,
@@ -34,31 +48,32 @@ export class GeminiWebSocket {
     this.onPlayingStateChange = onPlayingStateChange;
     this.onAudioLevelChange = onAudioLevelChange;
     this.onTranscriptionCallback = onTranscription;
-    
-    // Initialize AudioContext on user gesture
-    this.initializeAudioContext();
-  }
-
-  private initializeAudioContext() {
-    try {
-      this.audioContext = new AudioContext({
-        sampleRate: 24000
-      });
-    } catch (error) {
-      console.error("[AudioContext] Initialization failed:", error);
-    }
+    // Create AudioContext for playback
+    this.audioContext = new AudioContext({
+      sampleRate: 24000  // Match the response audio rate
+    });
+    this.transcriptionService = new TranscriptionService();
   }
 
   connect() {
+    console.log("[WebSocket] Attempting to connect...");
+    console.log("[WebSocket] WS_URL:", WS_URL.replace(/key=.*/, 'key=***'));
+
     if (this.ws?.readyState === WebSocket.OPEN) {
+      console.log("[WebSocket] Already connected");
       return;
     }
-    
-    console.log("[WebSocket] Connecting to Gemini...");
-    this.ws = new WebSocket(WS_URL);
+
+    try {
+      this.ws = new WebSocket(WS_URL);
+      console.log("[WebSocket] WebSocket object created");
+    } catch (error) {
+      console.error("[WebSocket] Failed to create WebSocket:", error);
+      return;
+    }
 
     this.ws.onopen = () => {
-      console.log("[WebSocket] Connected");
+      console.log("[WebSocket] Connection opened successfully");
       this.isConnected = true;
       this.sendInitialSetup();
     };
@@ -73,7 +88,7 @@ export class GeminiWebSocket {
         } else {
           messageText = event.data;
         }
-        
+
         await this.handleMessage(messageText);
       } catch (error) {
         console.error("[WebSocket] Error processing message:", error);
@@ -81,48 +96,48 @@ export class GeminiWebSocket {
     };
 
     this.ws.onerror = (error) => {
-      console.error("[WebSocket] Error:", error);
+      console.error("[WebSocket] Error occurred:", error);
+      console.error("[WebSocket] Error type:", (error as any).type);
+      console.error("[WebSocket] Error message:", (error as any).message);
     };
 
     this.ws.onclose = (event) => {
-      console.log("[WebSocket] Closed:", event.code, event.reason);
+      console.log("[WebSocket] Connection closed");
+      console.log("[WebSocket] Close code:", event.code);
+      console.log("[WebSocket] Close reason:", event.reason);
+      console.log("[WebSocket] Was clean:", event.wasClean);
       this.isConnected = false;
-      this.isSetupComplete = false;
-      
-      // Reconnect after delay if not intentional disconnect
-      if (!event.wasClean) {
-        setTimeout(() => {
-          console.log("[WebSocket] Attempting reconnect...");
-          this.connect();
-        }, 3000);
+
+      // Only attempt to reconnect if we haven't explicitly called disconnect
+      if (!event.wasClean && this.isSetupComplete) {
+        console.log("[WebSocket] Attempting to reconnect in 1 second...");
+        setTimeout(() => this.connect(), 1000);
       }
     };
   }
 
   private sendInitialSetup() {
+    console.log("[WebSocket] Sending initial setup message");
     const setupMessage = {
       setup: {
         model: MODEL,
         generation_config: {
-          response_modalities: ["AUDIO", "TEXT"],
-          max_output_tokens: 500
+          response_modalities: ["AUDIO"]
+        },
+        system_instruction: {
+          parts: [{
+            text: "You are a helpful agricultural AI assistant. You can see the user's crops through their camera and hear them through their microphone. Provide helpful advice about their crops, identify plant diseases, and answer farming questions. Keep your responses concise and conversational."
+          }]
         }
       }
     };
-    
-    try {
-      this.ws?.send(JSON.stringify(setupMessage));
-      console.log("[WebSocket] Setup sent");
-    } catch (error) {
-      console.error("[WebSocket] Setup send error:", error);
-    }
+    console.log("[WebSocket] Setup message:", JSON.stringify(setupMessage, null, 2));
+    this.ws?.send(JSON.stringify(setupMessage));
+    console.log("[WebSocket] Setup message sent, waiting for setupComplete response...");
   }
 
   sendMediaChunk(b64Data: string, mimeType: string) {
-    if (!this.isConnected || !this.ws || !this.isSetupComplete) {
-      console.warn("[WebSocket] Not ready for media chunk");
-      return;
-    }
+    if (!this.isConnected || !this.ws || !this.isSetupComplete) return;
 
     const message = {
       realtime_input: {
@@ -140,10 +155,29 @@ export class GeminiWebSocket {
     }
   }
 
-  private async playAudioResponse(base64Data: string) {
-    if (!this.audioContext || this.audioContext.state === 'suspended') {
-      await this.audioContext?.resume();
+  sendTextMessage(text: string) {
+    if (!this.isConnected || !this.ws || !this.isSetupComplete) return;
+
+    const message = {
+      client_content: {
+        turns: [{
+          role: "user",
+          parts: [{ text: text }]
+        }],
+        turn_complete: true
+      }
+    };
+
+    try {
+      console.log("[WebSocket] Sending text message:", text);
+      this.ws.send(JSON.stringify(message));
+    } catch (error) {
+      console.error("[WebSocket] Error sending text message:", error);
     }
+  }
+
+  private async playAudioResponse(base64Data: string) {
+    if (!this.audioContext) return;
 
     try {
       // Decode base64 to bytes
@@ -155,7 +189,7 @@ export class GeminiWebSocket {
 
       // Convert to Int16Array (PCM format)
       const pcmData = new Int16Array(bytes.buffer);
-      
+
       // Convert to float32 for Web Audio API
       const float32Data = new Float32Array(pcmData.length);
       for (let i = 0; i < pcmData.length; i++) {
@@ -164,9 +198,7 @@ export class GeminiWebSocket {
 
       // Add to queue and start playing if not already playing
       this.audioQueue.push(float32Data);
-      if (!this.isPlaying) {
-        this.playNextInQueue();
-      }
+      this.playNextInQueue();
     } catch (error) {
       console.error("[WebSocket] Error processing audio:", error);
     }
@@ -177,6 +209,7 @@ export class GeminiWebSocket {
 
     try {
       this.isPlaying = true;
+      this.isPlayingResponse = true;
       this.onPlayingStateChange?.(true);
       const float32Data = this.audioQueue.shift()!;
 
@@ -198,11 +231,12 @@ export class GeminiWebSocket {
       this.currentSource = this.audioContext.createBufferSource();
       this.currentSource.buffer = audioBuffer;
       this.currentSource.connect(this.audioContext.destination);
-      
+
       this.currentSource.onended = () => {
         this.isPlaying = false;
         this.currentSource = null;
         if (this.audioQueue.length === 0) {
+          this.isPlayingResponse = false;
           this.onPlayingStateChange?.(false);
         }
         this.playNextInQueue();
@@ -212,58 +246,10 @@ export class GeminiWebSocket {
     } catch (error) {
       console.error("[WebSocket] Error playing audio:", error);
       this.isPlaying = false;
+      this.isPlayingResponse = false;
       this.onPlayingStateChange?.(false);
       this.currentSource = null;
       this.playNextInQueue();
-    }
-  }
-
-  private async handleMessage(message: string) {
-    try {
-      const messageData = JSON.parse(message);
-      
-      if (messageData.setupComplete) {
-        console.log("[WebSocket] Setup complete");
-        this.isSetupComplete = true;
-        this.onSetupCompleteCallback?.();
-        return;
-      }
-
-      // Handle text responses
-      if (messageData.serverContent?.modelTurn?.parts) {
-        const parts = messageData.serverContent.modelTurn.parts;
-        for (const part of parts) {
-          if (part.text) {
-            console.log("[WebSocket] Text response:", part.text);
-            this.onMessageCallback?.(part.text);
-          }
-          
-          if (part.inlineData?.mimeType === "audio/pcm;rate=24000") {
-            console.log("[WebSocket] Audio response received");
-            this.playAudioResponse(part.inlineData.data);
-          }
-        }
-      }
-
-      // Handle turn completion
-      if (messageData.serverContent?.turnComplete === true) {
-        console.log("[WebSocket] Turn complete");
-      }
-    } catch (error) {
-      console.error("[WebSocket] Error parsing message:", error);
-    }
-  }
-
-  disconnect() {
-    console.log("[WebSocket] Disconnecting...");
-    this.isSetupComplete = false;
-    this.isConnected = false;
-    
-    this.stopCurrentAudio();
-    
-    if (this.ws) {
-      this.ws.close(1000, "Intentional disconnect");
-      this.ws = null;
     }
   }
 
@@ -277,7 +263,75 @@ export class GeminiWebSocket {
       this.currentSource = null;
     }
     this.isPlaying = false;
+    this.isPlayingResponse = false;
     this.onPlayingStateChange?.(false);
-    this.audioQueue = [];
+    this.audioQueue = []; // Clear queue
+  }
+
+  private async handleMessage(message: string) {
+    try {
+      const messageData = JSON.parse(message);
+      console.log("[WebSocket] Received message:", JSON.stringify(messageData, null, 2));
+
+      if (messageData.setupComplete) {
+        console.log("[WebSocket] Setup complete! Connection is ready.");
+        this.isSetupComplete = true;
+        this.onSetupCompleteCallback?.();
+
+        // Send an initial greeting to prompt Gemini to respond
+        console.log("[WebSocket] Sending initial greeting to Gemini");
+        this.sendTextMessage("Hello! I'm ready to show you my crops. Please introduce yourself and let me know you can see and hear me.");
+        return;
+      }
+
+      if (messageData.error) {
+        console.error("[WebSocket] Server error:", messageData.error);
+        return;
+      }
+
+      // Handle audio data
+      if (messageData.serverContent?.modelTurn?.parts) {
+        const parts = messageData.serverContent.modelTurn.parts;
+        for (const part of parts) {
+          if (part.inlineData?.mimeType === "audio/pcm;rate=24000") {
+            this.accumulatedPcmData.push(part.inlineData.data);
+            this.playAudioResponse(part.inlineData.data);
+          }
+        }
+      }
+
+      // Handle turn completion separately
+      if (messageData.serverContent?.turnComplete === true) {
+        if (this.accumulatedPcmData.length > 0) {
+          try {
+            const fullPcmData = this.accumulatedPcmData.join('');
+            const wavData = await pcmToWav(fullPcmData, 24000);
+
+            const transcription = await this.transcriptionService.transcribeAudio(
+              wavData,
+              "audio/wav"
+            );
+            console.log("[Transcription]:", transcription);
+
+            this.onTranscriptionCallback?.(transcription);
+            this.accumulatedPcmData = []; // Clear accumulated data
+          } catch (error) {
+            console.error("[WebSocket] Transcription error:", error);
+          }
+        }
+      }
+    } catch (error) {
+      console.error("[WebSocket] Error parsing message:", error);
+    }
+  }
+
+  disconnect() {
+    this.isSetupComplete = false;
+    if (this.ws) {
+      this.ws.close(1000, "Intentional disconnect");
+      this.ws = null;
+    }
+    this.isConnected = false;
+    this.accumulatedPcmData = [];
   }
 }
