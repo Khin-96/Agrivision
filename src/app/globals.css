@@ -38,3 +38,8 @@ body {
   background-size: 200% 100%;
   animation: ripple 6s linear infinite;
 }
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}

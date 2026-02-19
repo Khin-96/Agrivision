@@ -1,4 +1,5 @@
 import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } from '@google/generative-ai';
+import { GoogleAIFileManager, FileState } from '@google/generative-ai/server';
 
 // Types for Gemini API responses
 export interface GeminiAnalysisResult {
@@ -58,14 +59,23 @@ const SAFETY_SETTINGS = [
 // Initialize Gemini client
 function initializeGemini(): GoogleGenerativeAI {
   const apiKey = process.env.GEMINI_API_KEY;
-  
+
   if (!apiKey) {
     throw new Error(
       'GEMINI_API_KEY environment variable is not set. Please add your Google AI API key to your .env.local file.'
     );
   }
-  
+
   return new GoogleGenerativeAI(apiKey);
+}
+
+// Initialize Gemini File Manager (required for video uploads)
+function initializeFileManager(): GoogleAIFileManager {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    throw new Error('GEMINI_API_KEY environment variable is not set.');
+  }
+  return new GoogleAIFileManager(apiKey);
 }
 
 // Convert file to base64 for Gemini API
@@ -87,7 +97,7 @@ function getMimeType(file: File): string {
 // Enhanced prompt for comprehensive agricultural analysis
 function generatePrompt(type: 'image' | 'video', filename: string): string {
   const mediaType = type === 'video' ? 'video footage' : 'image';
-  const additionalVideoInstructions = type === 'video' 
+  const additionalVideoInstructions = type === 'video'
     ? '\n\nFor video content, analyze multiple frames and temporal aspects:\n- Movement patterns and behaviors\n- Changes over time\n- Sequential activities or processes\n- Dynamic conditions (weather changes, animal movements, growth progression)'
     : '';
 
@@ -149,20 +159,20 @@ function getCurrentSeason(): string {
 function cleanAnalysisText(text: string): string {
   // Remove markdown headers
   let cleaned = text.replace(/#{1,6}\s+/g, '');
-  
+
   // Remove bold/italic markdown
   cleaned = cleaned.replace(/\*\*/g, '');
   cleaned = cleaned.replace(/\*/g, '');
-  
+
   // Remove any other markdown symbols
   cleaned = cleaned.replace(/\[(.*?)\]\(.*?\)/g, '$1');
-  
+
   // Clean up excessive line breaks
   cleaned = cleaned.replace(/\n{3,}/g, '\n\n');
-  
+
   // Ensure proper spacing
   cleaned = cleaned.replace(/([a-z])\.([A-Z])/g, '$1. $2');
-  
+
   return cleaned.trim();
 }
 
@@ -170,7 +180,7 @@ function cleanAnalysisText(text: string): string {
 function parseAnalysisResult(analysis: string): GeminiAnalysisResult {
   const result: GeminiAnalysisResult = { analysis };
   const lines = analysis.split('\n');
-  
+
   // Extract categories
   const categories: string[] = [];
   if (analysis.toLowerCase().includes('crop')) categories.push('crops');
@@ -179,26 +189,26 @@ function parseAnalysisResult(analysis: string): GeminiAnalysisResult {
   if (analysis.toLowerCase().includes('aqua') || analysis.toLowerCase().includes('fish')) categories.push('aquaculture');
   if (analysis.toLowerCase().includes('horticulture') || analysis.toLowerCase().includes('garden')) categories.push('horticulture');
   if (categories.length === 0) categories.push('general agriculture');
-  
+
   result.categories = categories;
-  
+
   // Extract suggestions
   const suggestions: string[] = [];
-  const suggestionLines = lines.filter(line => 
-    line.trim().startsWith('-') && 
-    (line.toLowerCase().includes('recommend') || 
-     line.toLowerCase().includes('suggest') ||
-     line.toLowerCase().includes('action') ||
-     line.toLowerCase().includes('treatment'))
+  const suggestionLines = lines.filter(line =>
+    line.trim().startsWith('-') &&
+    (line.toLowerCase().includes('recommend') ||
+      line.toLowerCase().includes('suggest') ||
+      line.toLowerCase().includes('action') ||
+      line.toLowerCase().includes('treatment'))
   );
-  
+
   suggestionLines.forEach(line => {
     const suggestion = line.replace(/^-/, '').trim();
     if (suggestion) suggestions.push(suggestion);
   });
-  
+
   if (suggestions.length > 0) result.suggestions = suggestions;
-  
+
   // Extract risks
   const risks: string[] = [];
   const riskSectionIndex = lines.findIndex(line => line.toLowerCase().includes('risk assessment'));
@@ -211,9 +221,9 @@ function parseAnalysisResult(analysis: string): GeminiAnalysisResult {
       }
     }
   }
-  
+
   if (risks.length > 0) result.risks = risks;
-  
+
   // Extract "Did You Know" facts
   const didYouKnow: string[] = [];
   const didYouKnowIndex = lines.findIndex(line => line.toLowerCase().includes('did you know'));
@@ -226,22 +236,22 @@ function parseAnalysisResult(analysis: string): GeminiAnalysisResult {
       }
     }
   }
-  
+
   if (didYouKnow.length > 0) result.didYouKnow = didYouKnow;
-  
+
   return result;
 }
 
 // Analyze image content with Gemini
 export async function analyzeImage(
-  file: File, 
-  config: GeminiConfig = DEFAULT_CONFIG
+  file: File,
+  config: GeminiConfig = DEFAULT_CONFIG,
+  attempt: number = 1
 ): Promise<GeminiAnalysisResult> {
   try {
     const genAI = initializeGemini();
-    // Use gemini-2.0-flash-exp for fast, reliable image analysis
-    const model = genAI.getGenerativeModel({ 
-      model: "gemini-2.0-flash-exp",
+    const model = genAI.getGenerativeModel({
+      model: "gemini-2.0-flash",
       generationConfig: config,
       safetySettings: SAFETY_SETTINGS
     });
@@ -249,7 +259,7 @@ export async function analyzeImage(
     const base64Data = await fileToBase64(file);
     const mimeType = getMimeType(file);
     const filename = file.name;
-    
+
     const imageParts = [
       {
         inlineData: {
@@ -260,7 +270,7 @@ export async function analyzeImage(
     ];
 
     const prompt = generatePrompt('image', filename);
-    
+
     const result = await model.generateContent([prompt, ...imageParts]);
     const response = await result.response;
     const analysis = response.text();
@@ -274,81 +284,139 @@ export async function analyzeImage(
 
   } catch (error) {
     console.error('Gemini image analysis error:', error);
-    
+
     if (error instanceof Error) {
       if (error.message.includes('API key')) {
         throw new Error('Invalid or missing Gemini API key');
       }
+      // Retry once on overload / 503
+      if (
+        attempt < 2 &&
+        (error.message.includes('503') ||
+          error.message.includes('overloaded') ||
+          error.message.includes('UNAVAILABLE'))
+      ) {
+        console.log(`[Gemini] Image analysis overloaded, retrying in 3s (attempt ${attempt})...`);
+        await new Promise((r) => setTimeout(r, 3000));
+        return analyzeImage(file, config, attempt + 1);
+      }
       if (error.message.includes('quota') || error.message.includes('limit')) {
-        throw new Error('Gemini API quota exceeded');
+        throw new Error('Gemini API quota exceeded. Please try again later.');
       }
       throw error;
     }
-    
+
     throw new Error('Failed to analyze image with Gemini AI');
   }
 }
 
-// Analyze video content with Gemini
+// Analyze video content with Gemini using the File API
+// Inline base64 is NOT supported for video by gemini-2.0-flash
 export async function analyzeVideo(
   file: File,
   config: GeminiConfig = DEFAULT_CONFIG
 ): Promise<GeminiAnalysisResult> {
-  try {
-    const genAI = initializeGemini();
-    // Use gemini-2.0-flash-exp for video analysis
-    const model = genAI.getGenerativeModel({ 
-      model: "gemini-2.0-flash-exp",
-      generationConfig: {
-        ...config,
-        maxOutputTokens: 3000, // Increase for video analysis
-      },
-      safetySettings: SAFETY_SETTINGS
-    });
+  const fileManager = initializeFileManager();
+  const genAI = initializeGemini();
+  let uploadedFileName: string | null = null;
 
-    const base64Data = await fileToBase64(file);
+  try {
     const mimeType = getMimeType(file);
     const filename = file.name;
-    
-    const videoParts = [
-      {
-        inlineData: {
-          data: base64Data,
-          mimeType: mimeType,
+
+    const arrayBuffer = await file.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+
+    console.log(`[Gemini] Uploading video (${(buffer.length / 1024 / 1024).toFixed(1)} MB) to File API...`);
+
+    // Write to a temp file so the File API can read it from disk
+    const { writeFile, unlink } = await import('fs/promises');
+    const { join } = await import('path');
+    const { tmpdir } = await import('os');
+    const tmpPath = join(tmpdir(), `agrivision-${Date.now()}-${filename}`);
+    await writeFile(tmpPath, buffer);
+
+    try {
+      const uploadResponse = await fileManager.uploadFile(tmpPath, {
+        mimeType,
+        displayName: filename,
+      });
+
+      uploadedFileName = uploadResponse.file.name;
+      console.log(`[Gemini] Video uploaded: ${uploadResponse.file.uri}`);
+
+      // Wait for the file to finish processing
+      let uploadedFile = uploadResponse.file;
+      while (uploadedFile.state === FileState.PROCESSING) {
+        console.log('[Gemini] Video still processing, waiting 3s...');
+        await new Promise((r) => setTimeout(r, 3000));
+        uploadedFile = await fileManager.getFile(uploadedFile.name);
+      }
+
+      if (uploadedFile.state === FileState.FAILED) {
+        throw new Error('Video processing failed in Gemini File API');
+      }
+
+      console.log('[Gemini] Video ready, running analysis...');
+
+      const model = genAI.getGenerativeModel({
+        model: "gemini-2.0-flash",
+        generationConfig: { ...config, maxOutputTokens: 3000 },
+        safetySettings: SAFETY_SETTINGS
+      });
+
+      const prompt = generatePrompt('video', filename);
+
+      const result = await model.generateContent([
+        prompt,
+        {
+          fileData: {
+            mimeType: uploadedFile.mimeType,
+            fileUri: uploadedFile.uri,
+          },
         },
-      },
-    ];
+      ]);
 
-    const prompt = generatePrompt('video', filename);
-    
-    const result = await model.generateContent([prompt, ...videoParts]);
-    const response = await result.response;
-    const analysis = response.text();
+      const response = await result.response;
+      const analysis = response.text();
 
-    if (!analysis || analysis.trim().length === 0) {
-      throw new Error('Empty response from Gemini API');
+      if (!analysis || analysis.trim().length === 0) {
+        throw new Error('Empty response from Gemini API');
+      }
+
+      const cleanedAnalysis = cleanAnalysisText(analysis.trim());
+      return parseAnalysisResult(cleanedAnalysis);
+
+    } finally {
+      // Always clean up the temp file
+      try { await unlink(tmpPath); } catch { /* ignore */ }
     }
-
-    const cleanedAnalysis = cleanAnalysisText(analysis.trim());
-    return parseAnalysisResult(cleanedAnalysis);
 
   } catch (error) {
     console.error('Gemini video analysis error:', error);
-    
+
     if (error instanceof Error) {
       if (error.message.includes('API key')) {
         throw new Error('Invalid or missing Gemini API key');
       }
       if (error.message.includes('quota') || error.message.includes('limit')) {
-        throw new Error('Gemini API quota exceeded');
+        throw new Error('Gemini API quota exceeded. Please try again later.');
       }
-      if (error.message.includes('File size')) {
+      if (error.message.includes('File size') || error.message.includes('too large')) {
         throw new Error('Video file too large. Please use a smaller video (max 50MB)');
       }
       throw error;
     }
-    
+
     throw new Error('Failed to analyze video with Gemini AI');
+  } finally {
+    // Clean up the uploaded file from Gemini servers
+    if (uploadedFileName) {
+      try {
+        await fileManager.deleteFile(uploadedFileName);
+        console.log('[Gemini] Uploaded video cleaned up from File API');
+      } catch { /* non-critical */ }
+    }
   }
 }
 
@@ -359,8 +427,8 @@ export async function analyzeText(
 ): Promise<GeminiAnalysisResult> {
   try {
     const genAI = initializeGemini();
-    const model = genAI.getGenerativeModel({ 
-      model: "gemini-2.0-flash-exp",
+    const model = genAI.getGenerativeModel({
+      model: "gemini-2.0-flash",
       generationConfig: config,
       safetySettings: SAFETY_SETTINGS
     });
@@ -407,7 +475,7 @@ Information to analyze: ${text}`;
 
   } catch (error) {
     console.error('Gemini text analysis error:', error);
-    
+
     if (error instanceof Error) {
       if (error.message.includes('API key')) {
         throw new Error('Invalid or missing Gemini API key');
@@ -417,7 +485,7 @@ Information to analyze: ${text}`;
       }
       throw error;
     }
-    
+
     throw new Error('Failed to analyze text with Gemini AI');
   }
 }

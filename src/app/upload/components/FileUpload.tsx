@@ -3,7 +3,7 @@
 
 import React, { useRef, useState } from 'react';
 import { Upload as UploadIcon, Camera, Video, Image as ImageIcon, AlertCircle, CheckCircle, Cloud } from 'lucide-react';
-import { analyzeFarmContent, AnalysisResponse } from '@/lib/api';
+import { AnalysisResponse } from '@/lib/api';
 import { toast } from 'react-hot-toast';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -152,8 +152,60 @@ export default function FileUpload({ onAnalysisComplete, onVisionContextUpdate }
         });
       }, 300);
 
-      // Call the analysis API
-      const result = await analyzeFarmContent(file, type);
+      // Call the analysis API using Hugging Face Qwen-VL via proxy
+      const aiFormData = new FormData();
+      aiFormData.append('action', type === 'image' ? 'analyze-image' : 'analyze-video');
+      aiFormData.append('file', file);
+      aiFormData.append('prompt', `You are an expert agricultural AI. Analyze this ${type} and return a JSON object.
+      The JSON MUST have these keys:
+      - "analysis": A comprehensive markdown identification and health assessment.
+      - "categories": An array of strings identifying types (e.g. ["Livestock", "Cattle"]).
+      - "suggestions": An array of 3-5 specific actionable recommendations.
+      - "risks": An array of identified risks or potential issues.
+      - "didYouKnow": An array of 2 interesting agricultural facts about the subject.
+      
+      Return ONLY raw JSON.`);
+
+      const response = await fetch('/api/qwen-test', {
+        method: 'POST',
+        body: aiFormData
+      });
+
+      const aiData = await response.json();
+
+      let result: AnalysisResponse;
+      if (aiData.success) {
+        try {
+          // Extract JSON from response (clean markdown blocks if present)
+          const cleanJson = aiData.result.replace(/```json|```/g, '').trim();
+          const parsed = JSON.parse(cleanJson);
+
+          result = {
+            success: true,
+            analysis: parsed.analysis || aiData.result,
+            categories: parsed.categories || [],
+            suggestions: parsed.suggestions || [],
+            risks: parsed.risks || [],
+            didYouKnow: parsed.didYouKnow || [],
+            filename: file.name,
+            type: type
+          };
+        } catch (e) {
+          console.warn('Failed to parse AI JSON, falling back to raw text:', e);
+          result = {
+            success: true,
+            analysis: aiData.result,
+            categories: ['General Agriculture'],
+            suggestions: [],
+            risks: [],
+            didYouKnow: [],
+            filename: file.name,
+            type: type
+          };
+        }
+      } else {
+        result = { success: false, error: aiData.error };
+      }
 
       clearInterval(progressInterval);
 
