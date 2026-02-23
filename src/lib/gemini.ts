@@ -101,7 +101,7 @@ function generatePrompt(type: 'image' | 'video', filename: string): string {
     ? '\n\nFor video content, analyze multiple frames and temporal aspects:\n- Movement patterns and behaviors\n- Changes over time\n- Sequential activities or processes\n- Dynamic conditions (weather changes, animal movements, growth progression)'
     : '';
 
-  const basePrompt = `You are an expert agricultural AI assistant with knowledge in all farming domains including crops, livestock, horticulture, floriculture, aquaculture, and more. Analyze this ${mediaType} comprehensively and provide a detailed, well-structured analysis without any markdown formatting.${additionalVideoInstructions}
+  const basePrompt = `You are Vision an expert agricultural AI assistant with knowledge in all farming domains including crops, livestock, horticulture, floriculture, aquaculture, and more. Analyze this ${mediaType} comprehensively and provide a detailed, well-structured analysis without any markdown formatting.${additionalVideoInstructions}
 
 ANALYSIS FORMAT:
 Identification: [Identify the subject - plant, animal, fish, etc.]
