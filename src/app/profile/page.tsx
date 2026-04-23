@@ -185,9 +185,26 @@ export default function ProfilePage() {
                 <button className="w-full flex items-center px-4 py-2 text-gray-700 hover:bg-gray-50 rounded-lg transition">
                   <ShoppingCart className="w-5 h-5 mr-3" /> Order History
                 </button>
-                {user.role === 'farmer' && (
-                  <button className="w-full flex items-center px-4 py-2 text-gray-700 hover:bg-gray-50 rounded-lg transition">
+                {user.role === 'farmer' ? (
+                  <button onClick={() => router.push('/dashboard')} className="w-full flex items-center px-4 py-2 text-gray-700 hover:bg-gray-50 rounded-lg transition">
                     <FileText className="w-5 h-5 mr-3" /> Sales Dashboard
+                  </button>
+                ) : (
+                  <button 
+                    onClick={async () => {
+                      if(confirm('Are you sure you want to become a seller? You will be able to list products and access the farmer dashboard.')) {
+                        setLoading(true);
+                        const success = await updateProfile({ role: 'farmer' });
+                        if(success) {
+                          toast.success('Welcome to the farming community!');
+                          router.refresh();
+                        }
+                        setLoading(false);
+                      }
+                    }} 
+                    className="w-full flex items-center px-4 py-2 text-emerald-600 hover:bg-emerald-50 rounded-lg transition font-medium border border-emerald-100 mt-2"
+                  >
+                    <Plus className="w-5 h-5 mr-3" /> Become a Seller
                   </button>
                 )}
                 <button onClick={handleLogout} className="w-full flex items-center px-4 py-2 text-red-600 hover:bg-red-50 rounded-lg transition">

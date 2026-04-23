@@ -1,9 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import Groq from "groq-sdk";
-import { writeFile, mkdir } from 'fs/promises';
-import { join } from 'path';
-import { existsSync } from 'fs';
+import { v2 as cloudinary } from 'cloudinary';
+
+// Configure Cloudinary
+cloudinary.config({
+  cloud_name: process.env.CLOUD_NAME || process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUD_KEY || process.env.NEXT_PUBLIC_CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET || process.env.CLOUD_SECRET,
+});
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "";
 const GROQ_API_KEY = process.env.GROQ_API_KEY || "";
@@ -66,22 +71,26 @@ export async function POST(req: NextRequest) {
       const file = formData.get("file") as File;
       if (!file) throw new Error("No file uploaded");
 
-      // Save file to public/uploads
       const bytes = await file.arrayBuffer();
       const buffer = Buffer.from(bytes);
-      
-      const uploadsDir = join(process.cwd(), 'public', 'uploads');
-      if (!existsSync(uploadsDir)) {
-        await mkdir(uploadsDir, { recursive: true });
-      }
-
-      const timestamp = Date.now();
-      const filename = `${timestamp}-${file.name.replace(/\s+/g, '-')}`;
-      const filePath = join(uploadsDir, filename);
-      await writeFile(filePath, buffer);
-      
-      const imageUrl = `/uploads/${filename}`;
       const base64 = buffer.toString("base64");
+
+      // Upload to Cloudinary
+      const uploadPromise = new Promise((resolve, reject) => {
+        cloudinary.uploader.upload_stream(
+          {
+            resource_type: action === "analyze-video" ? "video" : "image",
+            folder: "agrivision/analyses",
+          },
+          (error, result) => {
+            if (error) reject(error);
+            else resolve(result);
+          }
+        ).end(buffer);
+      });
+
+      const cloudinaryResponse = await uploadPromise as any;
+      const imageUrl = cloudinaryResponse.secure_url;
 
       const visionText = await analyzeVisionWithGemini(base64, file.type, prompt);
       let result = visionText;

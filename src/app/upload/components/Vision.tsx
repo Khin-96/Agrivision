@@ -224,7 +224,7 @@ export default function Vision({
             {chatMessages.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full text-center text-gray-700">
                 <div className="mb-3 w-20 h-20 relative">
-                  <Image src="/avatar.png" alt="Vision AI" fill className="rounded-full object-cover" />
+                  <Image src="/avatar.png" alt="Vision AI" fill sizes="(max-width: 768px) 100vw, 33vw" className="rounded-full object-cover" />
                 </div>
                 <p className="font-medium">{language === 'swahili' ? 'Karibu! Ninawezaje kukusaidia leo?' : 'Hello! How can I assist your farm analysis?'}</p>
                 {suggestedQuestions.length > 0 && (

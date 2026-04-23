@@ -65,3 +65,37 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'Failed to save analysis' }, { status: 500 });
     }
 }
+
+export async function DELETE(request: NextRequest) {
+    try {
+        const session = await getServerSession(authOptions);
+        if (!session?.user?.email) {
+            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        }
+
+        const { searchParams } = new URL(request.url);
+        const id = searchParams.get('id');
+
+        if (id) {
+            // Delete specific analysis
+            await prisma.analysis.deleteMany({
+                where: {
+                    id,
+                    user: { email: session.user.email }
+                }
+            });
+            return NextResponse.json({ success: true, message: 'Analysis deleted' });
+        } else {
+            // Clear all history for user
+            await prisma.analysis.deleteMany({
+                where: {
+                    user: { email: session.user.email }
+                }
+            });
+            return NextResponse.json({ success: true, message: 'History cleared' });
+        }
+    } catch (error) {
+        console.error('Failed to delete history:', error);
+        return NextResponse.json({ error: 'Failed to delete history' }, { status: 500 });
+    }
+}

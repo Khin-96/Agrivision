@@ -1,10 +1,11 @@
 'use client';
 
+import Image from 'next/image';
 import { useState, useEffect } from 'react';
 import Layout from '@/components/layout/Layout';
 import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
-import { Loader2, Database, Cloud } from 'lucide-react';
+import { Loader2, Database, Cloud, Trash2, AlertTriangle, RefreshCw } from 'lucide-react';
 
 export default function HistoryPage() {
   const { user } = useAuth();
@@ -53,6 +54,51 @@ export default function HistoryPage() {
     setSelectedItem(item);
   };
 
+  const deleteItem = async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!confirm('Are you sure you want to delete this analysis?')) return;
+
+    try {
+      if (user) {
+        const res = await fetch(`/api/history?id=${id}`, { method: 'DELETE' });
+        if (res.ok) {
+          setHistoryItems(prev => prev.filter(item => item.id !== id));
+          if (selectedItem?.id === id) setSelectedItem(null);
+        }
+      } else {
+        const localHistory = JSON.parse(localStorage.getItem('analysis-history') || '[]');
+        const updatedHistory = localHistory.filter((item: any) => item.id !== id);
+        localStorage.setItem('analysis-history', JSON.stringify(updatedHistory));
+        setHistoryItems(updatedHistory);
+        if (selectedItem?.id === id) setSelectedItem(null);
+      }
+    } catch (err) {
+      console.error('Delete error:', err);
+      alert('Failed to delete item');
+    }
+  };
+
+  const clearHistory = async () => {
+    if (!confirm('Are you sure you want to clear your entire analysis history? This action cannot be undone.')) return;
+
+    try {
+      if (user) {
+        const res = await fetch('/api/history', { method: 'DELETE' });
+        if (res.ok) {
+          setHistoryItems([]);
+          setSelectedItem(null);
+        }
+      } else {
+        localStorage.removeItem('analysis-history');
+        setHistoryItems([]);
+        setSelectedItem(null);
+      }
+    } catch (err) {
+      console.error('Clear history error:', err);
+      alert('Failed to clear history');
+    }
+  };
+
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
     return date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
@@ -70,6 +116,15 @@ export default function HistoryPage() {
           <p className="mt-4 max-w-2xl text-lg text-gray-200">
             Review your previous plant analyses and recommendations
           </p>
+          {historyItems.length > 0 && (
+            <button
+              onClick={clearHistory}
+              className="mt-6 flex items-center gap-2 px-6 py-2 bg-red-600/20 hover:bg-red-600/40 border border-red-500/50 rounded-full text-red-200 text-sm font-bold transition-all backdrop-blur-sm"
+            >
+              <Trash2 size={16} />
+              Clear All History
+            </button>
+          )}
         </div>
       </div>
 
@@ -119,15 +174,17 @@ export default function HistoryPage() {
                           onClick={() => handleSelectItem(item)}
                         >
                           <div className="flex items-center">
-                            <div className="flex-shrink-0 h-14 w-14 rounded-lg overflow-hidden bg-gray-100 shadow-sm">
-                              <img
+                            <div className="flex-shrink-0 h-14 w-14 rounded-lg overflow-hidden bg-gray-100 shadow-sm relative">
+                              <Image
                                 src={item.imageUrl}
                                 alt="Plant thumbnail"
-                                className="h-full w-full object-cover"
+                                fill
+                                sizes="56px"
+                                className="object-cover"
                               />
                             </div>
-                            <div className="ml-4 min-w-0 flex-1">
-                              <p className="text-sm font-medium text-gray-900 truncate">
+                            <div className="ml-4 min-w-0 flex-1 relative group/item">
+                              <p className="text-sm font-medium text-gray-900 truncate pr-8">
                                 {plantName}
                               </p>
                               <p className="text-xs text-gray-500 mt-1">
@@ -139,6 +196,14 @@ export default function HistoryPage() {
                                 }`}>
                                 {healthy ? 'Healthy' : 'Issue Detected'}
                               </span>
+                              
+                              <button
+                                onClick={(e) => deleteItem(item.id, e)}
+                                className="absolute top-0 right-0 p-2 text-gray-300 hover:text-red-500 transition-colors opacity-0 group-hover/item:opacity-100"
+                                title="Delete Analysis"
+                              >
+                                <Trash2 size={16} />
+                              </button>
                             </div>
                           </div>
                         </li>
@@ -177,10 +242,12 @@ export default function HistoryPage() {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
                       <div className="space-y-4">
                         <div className="aspect-square rounded-2xl overflow-hidden bg-gray-100 shadow-inner border border-gray-200 relative group">
-                          <img
+                          <Image
                             src={selectedItem.imageUrl}
                             alt="Analyzed plant"
-                            className="object-cover w-full h-full"
+                            fill
+                            sizes="(max-width: 768px) 100vw, 50vw"
+                            className="object-cover"
                           />
                           <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                             <span className="text-white text-xs font-bold px-4 py-2 border border-white/50 rounded-full">Fullscreen View</span>

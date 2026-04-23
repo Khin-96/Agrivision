@@ -46,20 +46,20 @@ model User {
   idFrontUrl    String?
   idBackUrl     String?
   idType        String?
-  phone         String?   // ✅ added
-  address       String?   // ✅ added
-  farmName      String?   // ✅ added
-  farmLocation  String?   // ✅ added
-  farmSize      String?   // ✅ added
-  farmType      String?   // ✅ added
+  phone         String?
+  address       String?
+  farmName      String?
+  farmLocation  String?
+  farmSize      String?
+  farmType      String?
   authProvider  String?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt 
 
   accounts      Account[]
   sessions      Session[]
-  products      Product[]   // ✅ relation to Product
-  analyses      Analysis[]   // ✅ relation to Analysis
+  products      Product[]
+  analyses      Analysis[]
 }
 
 model VerificationToken {
