@@ -2,15 +2,20 @@
 require("dotenv").config();
 const { createServer } = require("http");
 const { parse } = require("url");
+const querystring = require("querystring");
 const next = require("next");
 const { Server } = require("socket.io");
 const { GoogleGenerativeAI } = require("@google/generative-ai");
+const Groq = require("groq-sdk");
 
 // ==============================
 // Config
 // ==============================
-if (!process.env.GEMINI_API_KEY) {
-  console.error("❌ Missing GEMINI_API_KEY in .env");
+const hasGemini = !!process.env.GEMINI_API_KEY;
+const hasGroq = !!process.env.GROQ_API_KEY;
+
+if (!hasGemini && !hasGroq) {
+  console.error("❌ Missing LLM config. Set GEMINI_API_KEY or GROQ_API_KEY in .env");
   process.exit(1);
 }
 
@@ -20,9 +25,11 @@ const port = parseInt(process.env.PORT || "3000", 10);
 
 const app = next({ dev, hostname, port });
 const handle = app.getRequestHandler();
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+const genAI = hasGemini ? new GoogleGenerativeAI(process.env.GEMINI_API_KEY) : null;
+const groqClient = hasGroq ? new Groq({ apiKey: process.env.GROQ_API_KEY }) : null;
 
 const clientSessions = new Map();
+const whatsappSessions = new Map();
 
 // Enhanced logging function
 function logInfo(socketId, message, data = null) {
@@ -48,12 +55,119 @@ const MAX_HISTORY = 8;
 const MAX_RETRIES = 3;
 
 // ==============================
+// Twilio WhatsApp helpers
+// ==============================
+function escapeXml(value) {
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
+async function generateWithGroq(prompt) {
+  if (!groqClient) {
+    throw new Error("GROQ_API_KEY missing");
+  }
+  const completion = await groqClient.chat.completions.create({
+    model: process.env.GROQ_MODEL || "llama-3.1-8b-instant",
+    temperature: 0.7,
+    max_tokens: 300,
+    messages: [
+      { role: "system", content: "You are a helpful assistant for WhatsApp. Keep replies concise." },
+      { role: "user", content: prompt },
+    ],
+  });
+  return completion.choices[0]?.message?.content || "";
+}
+
+async function generateWhatsAppReply(text, from) {
+  const history = whatsappSessions.get(from) || [];
+  const prompt = [
+    "You are a helpful assistant replying to a WhatsApp user.",
+    "Keep responses concise and clear.",
+    "",
+    "Recent conversation:",
+    ...history,
+    "",
+    `User: ${text}`,
+    "Assistant:",
+  ].join("\n");
+
+  let reply = "";
+  if (hasGroq) {
+    reply = await generateWithGroq(prompt);
+  } else if (genAI) {
+    const model = genAI.getGenerativeModel({
+      model: "gemini-2.0-flash-exp",
+      generationConfig: {
+        temperature: 0.7,
+        topK: 40,
+        topP: 0.95,
+        maxOutputTokens: 200,
+      },
+    });
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    reply = (response && response.text && response.text()) || "";
+  } else {
+    throw new Error("No LLM provider configured");
+  }
+
+  const trimmed = reply.trim() || "Sorry, I could not generate a reply right now.";
+  const newHistory = [
+    ...history.slice(-6),
+    `User: ${text}`,
+    `Assistant: ${trimmed}`,
+  ];
+  whatsappSessions.set(from, newHistory);
+
+  return trimmed;
+}
+
+async function handleTwilioWhatsApp(req, res) {
+  const chunks = [];
+  for await (const chunk of req) {
+    chunks.push(chunk);
+  }
+  const body = querystring.parse(Buffer.concat(chunks).toString("utf8"));
+  const from = body.From || "unknown";
+  const incoming = (body.Body || "").trim();
+
+  let replyText = "Hi! Send me a message and I will reply.";
+  if (incoming.length > 0) {
+    try {
+      console.log(`📲 [WhatsApp] Incoming from ${from}: "${incoming}"`);
+      replyText = await generateWhatsAppReply(incoming, from);
+      console.log(`✅ [WhatsApp] Replied to ${from}`);
+    } catch (err) {
+      console.error("❌ WhatsApp reply error:", err);
+      replyText = "Sorry - something went wrong while generating a reply.";
+    }
+  }
+
+  const twiml = `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Message>${escapeXml(replyText)}</Message>
+</Response>`;
+
+  res.statusCode = 200;
+  res.setHeader("Content-Type", "text/xml");
+  res.end(twiml);
+}
+
+// ==============================
 // Start Next.js server
 // ==============================
 app.prepare().then(() => {
   const server = createServer(async (req, res) => {
     try {
       const parsedUrl = parse(req.url, true);
+      if (req.method === "POST" && (parsedUrl.pathname === "/twilio/whatsapp" || parsedUrl.pathname === "/whatsapp")) {
+        await handleTwilioWhatsApp(req, res);
+        return;
+      }
       await handle(req, res, parsedUrl);
     } catch (err) {
       console.error("❌ Request error:", err);
@@ -81,6 +195,13 @@ app.prepare().then(() => {
 
   io.on("connection", (socket) => {
     logInfo(socket.id, "Client connected");
+
+    if (!genAI) {
+      logError(socket.id, "Gemini not configured. Socket features disabled.");
+      socket.emit("error", { error: "Gemini not configured on server." });
+      socket.disconnect(true);
+      return;
+    }
 
     // Initialize session
     const session = {
@@ -452,7 +573,7 @@ app.prepare().then(() => {
     console.log(`\n🚀 ========================================`);
     console.log(`🌐 Server running at http://${hostname}:${port}`);
     console.log(`🔌 Socket.IO ready for real-time connections`);
-    console.log(`🤖 Gemini 2.0 Flash ready for live vision`);
+    console.log(`🤖 LLM ready for live vision & WhatsApp`);
     console.log(`📊 Comprehensive logging enabled`);
     console.log(`🔄 Max retries: ${MAX_RETRIES}`);
     console.log(`========================================\n`);

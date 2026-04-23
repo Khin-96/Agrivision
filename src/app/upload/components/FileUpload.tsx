@@ -152,7 +152,7 @@ export default function FileUpload({ onAnalysisComplete, onVisionContextUpdate }
         });
       }, 300);
 
-      // Call the analysis API using Hugging Face Qwen-VL via proxy
+      // Call the analysis API (Gemini vision + Groq explanation)
       const aiFormData = new FormData();
       aiFormData.append('action', type === 'image' ? 'analyze-image' : 'analyze-video');
       aiFormData.append('file', file);

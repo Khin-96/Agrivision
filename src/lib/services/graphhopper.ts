@@ -136,11 +136,13 @@ export async function getAlternativeRoutes(
 }
 
 /**
- * Geocode an address to coordinates
+ * Get geocoding suggestions for an address
  */
-export async function geocodeAddress(address: string): Promise<GeocodingResult | null> {
+export async function getSuggestions(query: string): Promise<GeocodingResult[]> {
   try {
-    const url = `${GRAPHHOPPER_BASE_URL}/geocode?q=${encodeURIComponent(address)}&locale=en&key=${GRAPHHOPPER_API_KEY}`;
+    if (!query || query.length < 3) return [];
+    
+    const url = `${GRAPHHOPPER_BASE_URL}/geocode?q=${encodeURIComponent(query)}&locale=en&key=${GRAPHHOPPER_API_KEY}`;
 
     const response = await fetch(url);
     if (!response.ok) {
@@ -150,12 +152,10 @@ export async function geocodeAddress(address: string): Promise<GeocodingResult |
     const data = await response.json();
 
     if (!data.hits || data.hits.length === 0) {
-      return null;
+      return [];
     }
 
-    const hit = data.hits[0];
-
-    return {
+    return data.hits.map((hit: any) => ({
       lat: hit.point.lat,
       lng: hit.point.lng,
       name: hit.name,
@@ -165,11 +165,19 @@ export async function geocodeAddress(address: string): Promise<GeocodingResult |
       street: hit.street,
       housenumber: hit.housenumber,
       postcode: hit.postcode,
-    };
+    }));
   } catch (error) {
-    console.error("Error geocoding address:", error);
-    return null;
+    console.error("Error fetching suggestions:", error);
+    return [];
   }
+}
+
+/**
+ * Geocode an address to coordinates
+ */
+export async function geocodeAddress(address: string): Promise<GeocodingResult | null> {
+  const suggestions = await getSuggestions(address);
+  return suggestions.length > 0 ? suggestions[0] : null;
 }
 
 /**

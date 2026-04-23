@@ -20,6 +20,8 @@ import {
     Download,
     Clock,
     Plus,
+    Search,
+    MapPin,
 } from "lucide-react";
 import {
     getRoute,
@@ -28,8 +30,10 @@ import {
     formatTime,
     getIsochrone,
     getAlternativeRoutes,
+    getSuggestions,
     type Coordinate,
-    type Route
+    type Route,
+    type GeocodingResult
 } from "@/lib/services/graphhopper";
 
 // Dynamically import Leaflet components
@@ -124,6 +128,12 @@ export default function FarmMapEnhanced() {
     const [isochroneTime, setIsochroneTime] = useState(1800); // 30 minutes
     const [currentInstructionIndex, setCurrentInstructionIndex] = useState(0);
 
+    // Search state
+    const [searchQuery, setSearchQuery] = useState("");
+    const [suggestions, setSuggestions] = useState<GeocodingResult[]>([]);
+    const [showSuggestions, setShowSuggestions] = useState(false);
+    const [isSearching, setIsSearching] = useState(false);
+
     // Map tile URLs
     const tileUrls = {
         street: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
@@ -150,6 +160,19 @@ export default function FarmMapEnhanced() {
                 });
             });
         }
+    }, []);
+
+    // Close search suggestions on click outside
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            const searchContainer = document.getElementById('search-container');
+            if (searchContainer && !searchContainer.contains(event.target as Node)) {
+                setShowSuggestions(false);
+            }
+        };
+
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
     // Auto-scroll chat
@@ -403,8 +426,101 @@ export default function FarmMapEnhanced() {
         }
     };
 
+    const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+    const handleSearch = async (query: string) => {
+        setSearchQuery(query);
+        if (query.length < 3) {
+            setSuggestions([]);
+            setShowSuggestions(false);
+            return;
+        }
+
+        if (searchTimeoutRef.current) {
+            clearTimeout(searchTimeoutRef.current);
+        }
+
+        searchTimeoutRef.current = setTimeout(async () => {
+            setIsSearching(true);
+            const results = await getSuggestions(query);
+            setSuggestions(results);
+            setShowSuggestions(results.length > 0);
+            setIsSearching(false);
+        }, 500);
+    };
+
+    const selectSuggestion = (result: GeocodingResult) => {
+        setMapCenter({ lat: result.lat, lng: result.lng });
+        if (mapRef.current) {
+            mapRef.current.flyTo([result.lat, result.lng], 15);
+        }
+        setSearchQuery(result.name);
+        setShowSuggestions(false);
+    };
+
     return (
         <div className="relative w-full h-screen">
+            {/* Search Bar */}
+            <div id="search-container" className="absolute top-4 left-14 z-[1000] w-80">
+                <div className="relative group">
+                    <div className="flex items-center bg-white rounded-xl shadow-2xl border border-gray-200 overflow-hidden transition-all duration-300 focus-within:ring-2 focus-within:ring-green-600 focus-within:border-transparent">
+                        <div className="pl-4 text-gray-400">
+                            <Search size={18} />
+                        </div>
+                        <input
+                            type="text"
+                            value={searchQuery}
+                            onChange={(e) => handleSearch(e.target.value)}
+                            placeholder="Search locations..."
+                            className="w-full px-3 py-3 text-sm bg-transparent outline-none text-gray-800 placeholder-gray-400 font-medium"
+                            onFocus={() => suggestions.length > 0 && setShowSuggestions(true)}
+                        />
+                        {isSearching && (
+                            <div className="pr-4">
+                                <Loader2 className="animate-spin text-green-600" size={16} />
+                            </div>
+                        )}
+                        {searchQuery && !isSearching && (
+                            <button 
+                                onClick={() => { setSearchQuery(""); setSuggestions([]); setShowSuggestions(false); }}
+                                className="pr-4 text-gray-400 hover:text-gray-600 transition-colors"
+                            >
+                                <X size={16} />
+                            </button>
+                        )}
+                    </div>
+
+                    <AnimatePresence>
+                        {showSuggestions && (
+                            <motion.div
+                                initial={{ opacity: 0, y: -10 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={{ opacity: 0, y: -10 }}
+                                className="absolute top-full left-0 right-0 mt-2 bg-white rounded-xl shadow-2xl border border-gray-100 overflow-hidden max-h-80 overflow-y-auto z-[1001]"
+                            >
+                                {suggestions.map((result, index) => (
+                                    <button
+                                        key={index}
+                                        onClick={() => selectSuggestion(result)}
+                                        className="w-full flex items-start gap-3 px-4 py-3 hover:bg-green-50 transition-colors text-left border-b border-gray-50 last:border-0"
+                                    >
+                                        <div className="mt-1 text-green-600">
+                                            <MapPin size={16} />
+                                        </div>
+                                        <div>
+                                            <div className="text-sm font-semibold text-gray-800 line-clamp-1">{result.name}</div>
+                                            <div className="text-xs text-gray-500 line-clamp-1">
+                                                {[result.city, result.state, result.country].filter(Boolean).join(", ")}
+                                            </div>
+                                        </div>
+                                    </button>
+                                ))}
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
+                </div>
+            </div>
+
             <MapContainer
                 center={[mapCenter.lat, mapCenter.lng]}
                 zoom={12}
@@ -504,21 +620,50 @@ export default function FarmMapEnhanced() {
                     {isGettingLocation ? <Loader2 className="animate-spin" size={20} /> : <Navigation size={20} />}
                 </button>
 
-                <div className="relative group">
-                    <button className="bg-white p-3 rounded-lg shadow-lg">
+                <div 
+                    className="relative"
+                    onMouseEnter={() => setShowLayerMenu(true)}
+                    onMouseLeave={() => setShowLayerMenu(false)}
+                >
+                    <button 
+                        onClick={() => setShowLayerMenu(!showLayerMenu)}
+                        className="bg-white p-3 rounded-lg shadow-lg hover:bg-gray-50 transition-colors"
+                    >
                         <Layers size={20} />
                     </button>
-                    <div className="absolute left-full ml-2 bottom-0 bg-white rounded-lg shadow-lg p-2 hidden group-hover:block w-32">
-                        {Object.keys(tileUrls).map(layer => (
-                            <button
-                                key={layer}
-                                onClick={() => setMapLayer(layer as MapLayer)}
-                                className={`w-full text-left px-2 py-1 rounded text-sm capitalize ${mapLayer === layer ? 'bg-blue-50' : ''}`}
+                    
+                    <AnimatePresence>
+                        {showLayerMenu && (
+                            <motion.div 
+                                initial={{ opacity: 0, x: -10 }}
+                                animate={{ opacity: 1, x: 0 }}
+                                exit={{ opacity: 0, x: -10 }}
+                                className="absolute left-full ml-2 bottom-0 bg-white rounded-xl shadow-2xl p-2 w-32 border border-gray-100 z-[1001]"
                             >
-                                {layer}
-                            </button>
-                        ))}
-                    </div>
+                                {/* Invisible bridge to prevent mouseleave when moving to the menu */}
+                                <div className="absolute top-0 -left-2 w-2 h-full cursor-default" />
+                                
+                                <div className="flex flex-col gap-1">
+                                    {Object.keys(tileUrls).map(layer => (
+                                        <button
+                                            key={layer}
+                                            onClick={() => {
+                                                setMapLayer(layer as MapLayer);
+                                                setShowLayerMenu(false);
+                                            }}
+                                            className={`w-full text-left px-3 py-2 rounded-lg text-xs font-medium capitalize transition-colors ${
+                                                mapLayer === layer 
+                                                ? 'bg-green-600 text-white' 
+                                                : 'text-gray-700 hover:bg-green-50 hover:text-green-700'
+                                            }`}
+                                        >
+                                            {layer}
+                                        </button>
+                                    ))}
+                                </div>
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
                 </div>
 
                 <button

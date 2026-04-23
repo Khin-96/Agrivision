@@ -45,4 +45,9 @@ next-env.d.ts
 service-account.json
 agrivision-472512-f2c7092e41dc.json
 
-service-account.json
+# user uploads
+/public/uploads/
+
+# database
+/prisma/*.db
+/prisma/*.db-journal

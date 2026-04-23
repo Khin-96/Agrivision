@@ -9,6 +9,7 @@ export interface AnalysisResponse {
   suggestions?: string[];
   risks?: string[];
   didYouKnow?: string[];
+  imageUrl?: string;
 }
 
 export async function analyzeFarmContent(file: File, type: 'image' | 'video'): Promise<AnalysisResponse> {
