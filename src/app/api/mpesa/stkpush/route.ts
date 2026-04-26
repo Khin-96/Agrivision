@@ -1,4 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth';
+import { PrismaClient } from '@prisma/client';
+
+const prisma = new PrismaClient();
 
 // M-Pesa configuration - USING HARDCODED VALUES TO ENSURE CORRECTNESS
 const MPESA_CONFIG = {
@@ -20,7 +25,7 @@ function getTimestamp() {
   const hours = String(now.getHours()).padStart(2, '0');
   const minutes = String(now.getMinutes()).padStart(2, '0');
   const seconds = String(now.getSeconds()).padStart(2, '0');
-  
+
   return `${year}${month}${day}${hours}${minutes}${seconds}`;
 }
 
@@ -29,8 +34,8 @@ function generatePassword() {
   const timestamp = getTimestamp();
   const data = MPESA_CONFIG.SHORTCODE + MPESA_CONFIG.PASSKEY + timestamp;
   const password = Buffer.from(data).toString('base64');
-  
-  console.log('🔐 Password Generation Debug:', {
+
+  console.log(' Password Generation Debug:', {
     shortcode: MPESA_CONFIG.SHORTCODE,
     passkey: MPESA_CONFIG.PASSKEY,
     timestamp: timestamp,
@@ -38,7 +43,7 @@ function generatePassword() {
     password: password,
     passwordLength: password.length
   });
-  
+
   return {
     password: password,
     timestamp: timestamp
@@ -49,8 +54,8 @@ function generatePassword() {
 async function getAccessToken() {
   try {
     const credentials = Buffer.from(`${MPESA_CONFIG.CONSUMER_KEY}:${MPESA_CONFIG.CONSUMER_SECRET}`).toString('base64');
-    
-    console.log('🔐 Auth Debug:', {
+
+    console.log(' Auth Debug:', {
       consumerKey: MPESA_CONFIG.CONSUMER_KEY,
       consumerSecret: '***' + MPESA_CONFIG.CONSUMER_SECRET.slice(-4),
       authHeader: 'Basic ' + credentials.slice(0, 20) + '...'
@@ -70,10 +75,10 @@ async function getAccessToken() {
     }
 
     const data = await response.json();
-    console.log('✅ Access token received');
+    console.log('Access token received');
     return data.access_token;
   } catch (error) {
-    console.error('🔴 Access token error:', error);
+    console.error('Access token error:', error);
     throw error;
   }
 }
@@ -98,7 +103,7 @@ async function initiateSTKPush(phone: string, amount: number) {
       TransactionDesc: 'Cart Payment'
     };
 
-    console.log('📤 STK Push Request:', {
+    console.log(' STK Push Request:', {
       url: MPESA_CONFIG.STK_PUSH_URL,
       payload: {
         ...payload,
@@ -117,7 +122,7 @@ async function initiateSTKPush(phone: string, amount: number) {
     });
 
     const responseText = await response.text();
-    console.log('📥 STK Push Response:', {
+    console.log(' STK Push Response:', {
       status: response.status,
       statusText: response.statusText,
       body: responseText
@@ -136,16 +141,16 @@ async function initiateSTKPush(phone: string, amount: number) {
 
     return data;
   } catch (error) {
-    console.error('🔴 STK Push Error:', error);
+    console.error('STK Push Error:', error);
     throw error;
   }
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const { phone, amount } = await request.json();
+    const { phone, amount, items } = await request.json();
 
-    console.log('🟡 Received payment request:', { phone, amount });
+    console.log('Received payment request:', { phone, amount, itemsCount: items?.length });
 
     // Validate input
     if (!phone || !amount) {
@@ -177,12 +182,67 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log('🚀 Initiating STK Push...');
+    console.log('Initiating STK Push...');
     const result = await initiateSTKPush(formattedPhone, amount);
 
-    console.log('✅ STK Push Result:', result);
+    console.log('STK Push Result:', result);
 
     if (result.ResponseCode === '0') {
+      // 🔹 Trigger n8n Notification Workflow immediately
+      try {
+        const n8nWebhookUrl = 'https://khin.app.n8n.cloud/webhook/agrivision-payment';
+        
+        // Use the first item's details for the email, or aggregate
+        const mainItem = items && items.length > 0 ? items[0] : { name: 'Agrivision Products', quantity: 1, price: amount };
+        
+        // Fetch session to get real buyer details
+        const session = await getServerSession(authOptions);
+        const buyerName = session?.user?.name || 'Valued Customer';
+        const buyerEmail = session?.user?.email || 'buyer@example.com';
+        
+        // Fetch seller details if we have a farmerId from the item
+        let sellerName = 'Agrivision Partner';
+        let sellerEmail = 'seller@example.com'; // Default fallback
+        
+        if (mainItem.farmerId) {
+            const seller = await prisma.user.findUnique({ where: { id: mainItem.farmerId } });
+            if (seller) {
+                sellerName = seller.name || sellerName;
+                sellerEmail = seller.email || sellerEmail;
+            }
+        }
+        
+        const notificationData = {
+          orderId: result.CheckoutRequestID || `ORD-${Date.now()}`,
+          buyerName: buyerName, 
+          buyerEmail: buyerEmail,
+          buyerPhone: formattedPhone,
+          sellerName: sellerName,
+          sellerEmail: sellerEmail,
+          productName: mainItem.name,
+          productQuantity: mainItem.quantity || 1,
+          unitPrice: mainItem.price,
+          totalAmount: amount,
+          deliveryLocation: 'See order details', // Could be updated if you capture delivery location in Cart
+          mpesaReceipt: 'Pending Confirmation', // Daraja confirmation hasn't happened yet
+          transactionDate: new Date().toISOString(),
+          paymentMethod: 'M-Pesa'
+        };
+
+        // Fire and forget webhook trigger
+        fetch(n8nWebhookUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(notificationData)
+        }).then(res => {
+          if (res.ok) console.log('🚀 n8n Notification triggered successfully (STK Push)');
+          else console.error('🔴 n8n webhook error:', res.statusText);
+        }).catch(err => console.error('🔴 Failed to trigger n8n notification:', err));
+
+      } catch (n8nError) {
+        console.error('🔴 Failed to set up n8n notification:', n8nError);
+      }
+
       return NextResponse.json({
         success: true,
         message: 'STK Push initiated successfully. Check your phone to complete payment.',
@@ -203,11 +263,11 @@ export async function POST(request: NextRequest) {
 
   } catch (error: any) {
     console.error('🔴 API Error:', error);
-    
+
     return NextResponse.json(
-      { 
+      {
         error: error.message || 'Internal server error',
-        success: false 
+        success: false
       },
       { status: 500 }
     );

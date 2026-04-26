@@ -76,7 +76,8 @@ export default function Cart({ isOpen, onClose, items, onUpdateQuantity, onRemov
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           phone: phone,
-          amount: total 
+          amount: total,
+          items: items
         }),
       })
 
